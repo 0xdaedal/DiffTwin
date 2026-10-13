@@ -1,0 +1,10 @@
+frontend/node_modules/
+build/
+bin/
+diffbench
+difftwin
+*.exe
+*.test
+*.out
+.idea/
+/package-lock.json

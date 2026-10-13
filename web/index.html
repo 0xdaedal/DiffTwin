@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DiffTwin</title>
+  <style>
+    :root { color-scheme: dark; --bg:#101318; --panel:#191e26; --line:#2a313c; --text:#e8edf4; --muted:#96a1b1; --accent:#7c9cff; --good:#69d3a1; --bad:#ff8585; }
+    * { box-sizing:border-box }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,sans-serif }
+    button,input,textarea,select { font:inherit }
+    button { cursor:pointer; border:1px solid var(--line); border-radius:7px; background:#252c37; color:var(--text); padding:8px 12px }
+    button.primary { background:#345bd1; border-color:#5278e6 }
+    button.danger { color:#ffaaaa }
+    input,textarea,select { width:100%; color:var(--text); background:#11151b; border:1px solid var(--line); border-radius:6px; padding:9px }
+    textarea { min-height:85px; resize:vertical; font:13px/1.5 ui-monospace,monospace }
+    label { display:block; color:var(--muted); font-size:12px; margin:0 0 5px }
+    .app { display:grid; grid-template-columns:280px 1fr; min-height:100vh }
+    aside { border-right:1px solid var(--line); padding:20px 14px; background:#141820 }
+    main { max-width:1200px; width:100%; padding:28px 34px; margin:0 auto }
+    h1 { font-size:18px; margin:0 0 20px } h2 { margin:0 0 18px; font-size:21px } h3 { margin:0 0 10px; font-size:15px }
+    .brand { display:flex; justify-content:space-between; align-items:center; padding:0 7px 16px; border-bottom:1px solid var(--line); margin-bottom:15px }
+    .brand strong { font-size:19px; letter-spacing:.2px } .muted { color:var(--muted) }
+    .row { display:flex; gap:9px; align-items:center } .row > * { flex:1 }
+    .stack { display:grid; gap:14px } .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:17px; margin:0 0 15px }
+    .project-item,.collection-item,.request-item { border:0; display:flex; width:100%; text-align:left; margin:3px 0; background:transparent; padding:9px; border-radius:6px }
+    .project-item.active,.collection-item.active,.request-item.active { background:#252c37 }
+    .collection-item { padding-left:20px; color:#c7d0dd } .request-item { padding-left:34px; font-size:13px; color:var(--muted) }
+    .section-head { display:flex; align-items:center; justify-content:space-between; margin:18px 4px 6px; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em }
+    .form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px }
+    .full { grid-column:1/-1 } .target-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px }
+    .request-line { display:grid; grid-template-columns:130px 1fr; gap:9px }
+    .result-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px }
+    .result { background:#11151b; border:1px solid var(--line); border-radius:7px; padding:12px; min-width:0 }
+    .result pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow:auto; font:12px/1.5 ui-monospace,monospace; color:#c8d2e0 }
+    .result-title { display:flex; justify-content:space-between; font-weight:600; margin-bottom:8px }
+    .status { color:var(--muted); font-size:12px }
+    .notice { padding:11px 13px; border-radius:7px; margin-bottom:13px; background:#1b2b25; color:var(--good) }
+    .notice.bad { background:#321e22; color:var(--bad) }
+    .toolbar { display:flex; gap:8px; align-items:center }
+    .empty { color:var(--muted); padding:22px; text-align:center; border:1px dashed var(--line); border-radius:8px }
+    .hidden { display:none!important }
+    @media(max-width:800px) { .app { grid-template-columns:1fr } aside { border-right:0; border-bottom:1px solid var(--line) } main { padding:20px 14px } .target-grid,.result-grid { grid-template-columns:1fr } .form-grid { grid-template-columns:1fr } .full { grid-column:auto } }
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand"><strong>DiffTwin</strong><span class="muted">local</span></div>
+    <div class="section-head"><span>Proyectos</span><button id="newProject" title="Nuevo proyecto">+</button></div>
+    <div id="projectList"></div>
+    <div id="collectionNav"></div>
+  </aside>
+  <main>
+    <div id="message" class="hidden"></div>
+    <div id="welcome" class="empty">Crea un proyecto para configurar tus tres destinos y empezar a comparar APIs.</div>
+    <section id="projectPanel" class="hidden">
+      <div class="toolbar" style="justify-content:space-between;margin-bottom:16px">
+        <h2 id="projectHeading">Proyecto</h2>
+        <button class="danger" id="deleteProject">Eliminar proyecto</button>
+      </div>
+      <div class="card">
+        <h3>Configuración del proyecto</h3>
+        <div class="form-grid">
+          <div class="full"><label>Nombre</label><input id="projectName" placeholder="Mi API"></div>
+          <div class="target-grid full">
+            <div><label>Estable principal</label><input id="primaryURL" placeholder="https://api-stable"></div>
+            <div><label>Candidata</label><input id="candidateURL" placeholder="https://api-candidate"></div>
+            <div><label>Estable secundaria (ruido)</label><input id="secondaryURL" placeholder="https://api-stable-2"></div>
+          </div>
+          <div class="full"><label>Variables (JSON; se interpolan como {{variable}} en URL, headers y body)</label><textarea id="variables" placeholder='{"token":"..."}'></textarea></div>
+        </div>
+        <div style="margin-top:12px"><button class="primary" id="saveProject">Guardar configuración</button></div>
+      </div>
+      <div class="toolbar" style="justify-content:space-between;margin:25px 0 12px">
+        <h3>Colecciones</h3><button id="newCollection">Nueva colección</button>
+      </div>
+      <div id="collectionPanel" class="hidden card">
+        <div class="toolbar" style="justify-content:space-between"><h3 id="collectionHeading">Colección</h3><button class="danger" id="deleteCollection">Eliminar</button></div>
+        <div class="row" style="margin-bottom:14px"><input id="collectionName" placeholder="Nombre de colección"><button class="primary" id="saveCollection" style="flex:0 0 auto">Guardar</button></div>
+        <div class="row" style="justify-content:space-between;margin:12px 0">
+          <strong>Peticiones</strong><button id="newRequest" style="flex:0 0 auto">Nueva petición</button>
+        </div>
+        <div id="requestList"></div>
+      </div>
+      <div id="requestPanel" class="hidden card">
+        <div class="toolbar" style="justify-content:space-between"><h3 id="requestHeading">Petición</h3><button class="danger" id="deleteRequest">Eliminar</button></div>
+        <div class="stack">
+          <div><label>Nombre</label><input id="requestName" placeholder="Obtener usuario"></div>
+          <div class="request-line"><select id="requestMethod"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select><input id="requestPath" placeholder="/v1/users/{{userId}}"></div>
+          <div><label>Headers (JSON)</label><textarea id="requestHeaders" placeholder='{"Content-Type":"application/json"}'></textarea></div>
+          <div><label>Body</label><textarea id="requestBody" placeholder='{"example":true}'></textarea></div>
+          <div class="toolbar"><button class="primary" id="runRequest">Guardar y comparar</button><span class="muted" id="runStatus"></span></div>
+        </div>
+      </div>
+      <div id="results" class="hidden card">
+        <h3>Resultado de comparación</h3><div id="verdict" style="margin:10px 0"></div><div class="result-grid" id="resultGrid"></div>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+let projects = [], project = null, collection = null, request = null;
+const uid = () => crypto.randomUUID();
+async function api(path, options = {}) {
+  const response = await fetch(path, {headers:{"Content-Type":"application/json"}, ...options});
+  if (!response.ok) {
+    let error = `HTTP ${response.status}`;
+    try { error = (await response.json()).error || error; } catch {}
+    throw new Error(error);
+  }
+  return response.status === 204 ? null : response.json();
+}
+function notify(text, bad = false) {
+  const box = $("message"); box.textContent = text; box.className = bad ? "notice bad" : "notice";
+  setTimeout(() => box.classList.add("hidden"), 4500);
+}
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+async function load() {
+  projects = await api("/api/projects");
+  if (project) project = projects.find(p => p.id === project.id) || null;
+  if (collection && project) collection = project.collections.find(c => c.id === collection.id) || null;
+  if (request && collection) request = collection.requests.find(r => r.id === request.id) || null;
+  render();
+}
+function render() {
+  $("projectList").innerHTML = projects.map(p => `<button class="project-item ${project?.id===p.id?"active":""}" data-project="${p.id}">${escapeHTML(p.name)}</button>`).join("");
+  document.querySelectorAll("[data-project]").forEach(el => el.onclick = () => selectProject(el.dataset.project));
+  $("welcome").classList.toggle("hidden", !!project);
+  $("projectPanel").classList.toggle("hidden", !project);
+  if (!project) { $("collectionNav").innerHTML=""; return; }
+  $("projectHeading").textContent = project.name;
+  $("projectName").value=project.name; $("primaryURL").value=project.primary; $("candidateURL").value=project.candidate; $("secondaryURL").value=project.secondary;
+  $("variables").value=JSON.stringify(project.variables || {}, null, 2);
+  $("collectionNav").innerHTML=`<div class="section-head"><span>Colecciones</span></div>`+project.collections.map(c=>`<button class="collection-item ${collection?.id===c.id?"active":""}" data-collection="${c.id}">${escapeHTML(c.name)}</button>`).join("")+(collection?collection.requests.map(r=>`<button class="request-item ${request?.id===r.id?"active":""}" data-request="${r.id}">${escapeHTML(r.name)}</button>`).join(""):"");
+  document.querySelectorAll("[data-collection]").forEach(el=>el.onclick=()=>selectCollection(el.dataset.collection));
+  document.querySelectorAll("[data-request]").forEach(el=>el.onclick=()=>selectRequest(el.dataset.request));
+  $("collectionPanel").classList.toggle("hidden",!collection);
+  $("requestPanel").classList.toggle("hidden",!request);
+  $("results").classList.add("hidden");
+  if(collection) {
+    $("collectionHeading").textContent=collection.name; $("collectionName").value=collection.name;
+    $("requestList").innerHTML=collection.requests.map(r=>`<button class="request-item ${request?.id===r.id?"active":""}" data-request="${r.id}">${escapeHTML(r.method)} &nbsp; ${escapeHTML(r.name)} <span class="muted">&nbsp; ${escapeHTML(r.path)}</span></button>`).join("") || `<div class="muted">Aún no hay peticiones en esta colección.</div>`;
+    document.querySelectorAll("[data-request]").forEach(el=>el.onclick=()=>selectRequest(el.dataset.request));
+  }
+  if(request) {
+    $("requestHeading").textContent=request.name; $("requestName").value=request.name; $("requestMethod").value=request.method;
+    $("requestPath").value=request.path; $("requestHeaders").value=JSON.stringify(request.headers||{},null,2); $("requestBody").value=request.body||"";
+  }
+}
+function selectProject(id) { project=projects.find(p=>p.id===id); collection=null; request=null; render(); }
+function selectCollection(id) { collection=project.collections.find(c=>c.id===id); request=null; render(); }
+function selectRequest(id) { request=collection.requests.find(r=>r.id===id); render(); }
+async function saveProject() {
+  let variables; try { variables=JSON.parse($("variables").value||"{}"); } catch { throw new Error("Variables: JSON no válido"); }
+  const body={name:$("projectName").value,primary:$("primaryURL").value,candidate:$("candidateURL").value,secondary:$("secondaryURL").value,variables};
+  project=await api(`/api/projects/${project.id}`,{method:"PUT",body:JSON.stringify(body)}); await load(); notify("Proyecto guardado.");
+}
+async function saveCollection() {
+  const body={...collection,name:$("collectionName").value};
+  await api(`/api/projects/${project.id}/collections/${collection.id}`,{method:"PUT",body:JSON.stringify(body)}); await load(); notify("Colección guardada.");
+}
+async function saveRequestAndRun() {
+  let headers; try { headers=JSON.parse($("requestHeaders").value||"{}"); } catch { throw new Error("Headers: JSON no válido"); }
+  if (!headers || Array.isArray(headers) || typeof headers !== "object") throw new Error("Headers debe ser un objeto JSON.");
+  const updated={...request,name:$("requestName").value,method:$("requestMethod").value,path:$("requestPath").value,headers,body:$("requestBody").value};
+  collection.requests=collection.requests.map(r=>r.id===updated.id?updated:r);
+  await api(`/api/projects/${project.id}/collections/${collection.id}`,{method:"PUT",body:JSON.stringify(collection)});
+  await load(); request=collection.requests.find(r=>r.id===updated.id);
+  $("runStatus").textContent="Ejecutando los tres destinos…";
+  const result=await api("/api/run",{method:"POST",body:JSON.stringify({project_id:project.id,request})});
+  showResult(result); $("runStatus").textContent="Comparación completada.";
+}
+function showResult(result) {
+  $("results").classList.remove("hidden");
+  const differs=result.candidate_differs, noise=result.noise_detected;
+  $("verdict").innerHTML=differs?`<div class="notice bad">La candidata difiere de la estable.${noise?" También hay diferencias entre las dos instancias estables (posible ruido).":""}</div>`:`<div class="notice">Sin diferencias entre estable y candidata.${noise?" Hay diferencias entre las instancias estables (ruido detectado).":""}</div>`;
+  $("resultGrid").innerHTML=[["Estable",result.primary],["Candidata",result.candidate],["Estable secundaria",result.secondary]].map(([name,r])=>{
+    const body=pretty(r.body);
+    return `<div class="result"><div class="result-title"><span>${name}</span><span class="status">${r.error?`Error`: `HTTP ${r.status_code}`} · ${r.duration_ms} ms</span></div>${r.error?`<div class="notice bad">${escapeHTML(r.error)}</div>`:`<pre>${escapeHTML(body)}${r.truncated?"\\n[respuesta truncada a 2 MiB]":""}</pre>`}</div>`;
+  }).join("");
+}
+function pretty(body) { try { return JSON.stringify(JSON.parse(body),null,2); } catch { return body || "(sin contenido)"; } }
+function onClick(id, fn) { $(id).onclick=()=>Promise.resolve(fn()).catch(e=>notify(e.message,true)); }
+onClick("newProject",async()=>{
+  const p=await api("/api/projects",{method:"POST",body:JSON.stringify({name:"Nuevo proyecto",primary:"http://localhost:8001",candidate:"http://localhost:8002",secondary:"http://localhost:8003"})});
+  await load(); selectProject(p.id);
+});
+onClick("saveProject",saveProject);
+onClick("deleteProject",async()=>{if(!confirm(`¿Eliminar el proyecto «${project.name}»?`))return;await api(`/api/projects/${project.id}`,{method:"DELETE"});project=null;collection=null;request=null;await load();});
+onClick("newCollection",async()=>{const c=await api(`/api/projects/${project.id}/collections`,{method:"POST",body:JSON.stringify({name:"Nueva colección"})});await load();selectCollection(c.id);});
+onClick("saveCollection",saveCollection);
+onClick("deleteCollection",async()=>{if(!confirm(`¿Eliminar la colección «${collection.name}»?`))return;await api(`/api/projects/${project.id}/collections/${collection.id}`,{method:"DELETE"});collection=null;request=null;await load();});
+onClick("newRequest",async()=>{const r={id:uid(),name:"Nueva petición",method:"GET",path:"/",headers:{},body:""};collection.requests.push(r);await api(`/api/projects/${project.id}/collections/${collection.id}`,{method:"PUT",body:JSON.stringify(collection)});await load();selectRequest(r.id);});
+onClick("deleteRequest",async()=>{if(!confirm(`¿Eliminar la petición «${request.name}»?`))return;collection.requests=collection.requests.filter(r=>r.id!==request.id);await api(`/api/projects/${project.id}/collections/${collection.id}`,{method:"PUT",body:JSON.stringify(collection)});request=null;await load();});
+onClick("runRequest",saveRequestAndRun);
+load().catch(e=>notify(e.message,true));
+</script>
+</body>
+</html>
