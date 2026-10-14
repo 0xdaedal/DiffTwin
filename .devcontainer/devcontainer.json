@@ -1,0 +1,45 @@
+{
+  "name": "DiffTwin",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.27.2"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:${containerEnv:GOPATH}/bin"
+  },
+  "postCreateCommand": "npm ci --prefix frontend && go mod download && go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0",
+  "forwardPorts": [
+    5173
+  ],
+  "portsAttributes": {
+    "5173": {
+      "label": "Vite dev server",
+      "onAutoForward": "notify"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.Go",
+        "Vue.volar"
+      ],
+      "settings": {
+        "go.useLanguageServer": true,
+        "editor.formatOnSave": true,
+        "[go]": {
+          "editor.defaultFormatter": "golang.Go"
+        },
+        "[vue]": {
+          "editor.defaultFormatter": "Vue.volar"
+        }
+      }
+    }
+  }
+}

@@ -1,49 +1,49 @@
-# Continuar DiffTwin
+# DiffTwin handoff
 
-## Estado actual
+## Current state
 
-DiffTwin es una aplicación de escritorio Go/Wails para comparar peticiones HTTP con estable principal y candidata, más una estable secundaria opcional para detectar ruido. La interfaz está en Vue 3/Vite; el puente de Wails expone operaciones de proyectos, colecciones, importación Postman y comparación. La marca y el módulo Go ya se renombraron; las ubicaciones de datos y credenciales existentes conservan compatibilidad con DiffBench.
+DiffTwin is a Go/Wails desktop application for comparing HTTP requests against a primary stable destination and a candidate, with an optional secondary stable destination to detect response noise. The frontend uses Vue 3 and Vite; Wails exposes project, collection, Postman import, and comparison operations.
 
-La UI nueva incluye dashboard con tarjetas, selector de proyecto, navegación de colecciones y carpetas anidadas, editor con pestañas Params/Headers/Body y barra de método/URL/Enviar fija al desplazarse, comparación en tres destinos (incluido el detalle por rutas de JSON que difiere entre las dos estables) y tema claro/oscuro. La comparación considera status, headers de respuesta (excepto campos variables/de transporte como `Date`, `Content-Length` y `CF-Ray`; `NEL` y `Report-To` sí se comparan) y cuerpo; las latencias se muestran pero no afectan el veredicto. Las rutas JSON variables se pueden excluir con patrones exactos o comodines en las opciones del proyecto. Las variables comunes admiten sobrescrituras por destino que se aplican a rutas, query, headers y body, con fallback al valor compartido. La autenticación es independiente por destino (sin autenticación, Bearer, Basic o API key en header/query); los secretos van al almacén de credenciales del sistema, no a los JSON. La importación Postman v2.0/v2.1 conserva la jerarquía; descarta hosts, mantiene rutas/query, headers, cuerpos raw y variables de colección, y notifica las limitaciones conocidas.
+The application includes a dashboard, project selector, nested collection/folder navigation, request editor with Params/Headers/Body tabs, and comparisons across up to three destinations. Comparison details include JSON paths that differ between the two stable destinations. The verdict considers status, response headers (excluding volatile/transport headers such as `Date`, `Content-Length`, and `CF-Ray`; `NEL` and `Report-To` remain comparable), and body. Latency is displayed but does not affect the verdict. JSON paths can be ignored with exact or wildcard patterns in project options. Shared variables can be overridden per destination for paths, query parameters, headers, and bodies. Authentication is independent per destination (none, Bearer, Basic, or API key in header/query); secrets are stored in the operating system credential store, not in project JSON. Postman v2.0/v2.1 import preserves folder hierarchy, paths/query, headers, raw bodies, and collection variables, and reports known unsupported items.
 
-El dashboard incluye **Probar ejemplo**, que crea o abre idempotentemente el proyecto `Demo: comparación de APIs`, selecciona su petición y usa HTTPBin para mostrar un JSON donde la candidata difiere en `$.url`; requiere internet y no debe recibir datos sensibles.
+The **Probar ejemplo** dashboard action idempotently creates or opens the `Demo: comparación de APIs` project, selects its request, and uses HTTPBin to demonstrate a JSON difference at `$.url`. It requires an internet connection; do not send sensitive data to the public service.
 
-La estructura interna es:
+## Code layout
 
-- `internal/domain`: entidades, reglas y operaciones recursivas en colecciones.
-- `internal/comparison`: cliente HTTP y comparación de resultados.
-- `internal/credentials`: acceso al almacén de credenciales del sistema.
-- `internal/storage`: archivos JSON y migración.
-- `app.go`: casos de uso expuestos a Wails.
-- `frontend/src`: Vue y estilos; `frontend/dist`: recursos compilados y embebidos.
-- `main.go`: arranque y handlers HTTP antiguos conservados para pruebas/compatibilidad.
+- `internal/domain`: entities, validation, cloning, and recursive collection/folder operations.
+- `internal/comparison`: HTTP client and response comparison.
+- `internal/credentials`: operating system credential-store access.
+- `internal/storage`: project JSON storage and migration.
+- `app.go`: application use cases exposed to Wails.
+- `frontend/src`: Vue interface and styles; `frontend/dist` contains assets embedded in the app.
+- `main.go`: Wails startup and legacy HTTP handlers retained for compatibility/tests.
 
-## Mejoras pendientes
+## Agreed improvements not yet implemented
 
-Avanzar de una en una; todavía no están implementadas:
+Implement these one at a time:
 
-1. **Ejecución de colecciones:** permitir lanzar todas las peticiones de una colección y mostrar el progreso y los resultados de cada una.
-2. **Historial de comparaciones:** permitir consultar ejecuciones anteriores y revisar sus respuestas y diferencias.
+1. **Collection execution:** run all requests in a collection and show progress and per-request results.
+2. **Comparison history:** browse previous runs and inspect their responses and differences.
 
-La siguiente mejora acordada es la ejecución de colecciones. Definir su interacción y persistencia al empezar esa tarea, conservando el flujo actual de ejecución individual.
+Collection execution is the next agreed improvement. Define its UX and persistence when starting that work, and preserve the existing single-request flow.
 
-## Ejecutar
+## Development workflow
 
-Linux requiere Go 1.22+, Node.js 20+ para compilar la UI, GTK 3 y WebKitGTK 4.1. Instala en Ubuntu/Debian:
+See the [native development workflow in README](README.md#native-development-workflow) for detailed platform requirements and steps. In short:
 
-```sh
-sudo apt install -y golang-go nodejs npm build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
-```
+- Use the Dev Container from any host to edit, run Go tests with `-tags ci`, build Vue, and build Linux. It does not show the desktop window or share the host credential store.
+- To visually test the app and build a native executable, install platform dependencies and run `wails dev` on Linux, macOS, or Windows.
+- Stop `wails dev` and other foreground servers in their terminals with `Ctrl+C`; close the application window. To disconnect VS Code from the container, run **Dev Containers: Reopen Folder Locally** or **Close Remote Connection**.
+- Before publishing, run tests (`go test -tags ci ./...`, `go vet -tags ci ./...`, `npm --prefix frontend run build`) and make sure no secrets or local project JSON are included.
 
-Con WebKitGTK 4.1, ejecuta `go run -tags 'production webkit2_41' .`, usa `wails dev -tags webkit2_41` para desarrollo y `wails build -tags webkit2_41` para compilar. Con WebKitGTK 4.0 se omite `webkit2_41`. Instrucciones completas para las tres plataformas en `README.md`.
+## Validation and known limitations
 
-## Validación y limitaciones conocidas
+- Go tests pass with `go test -count=1 -race -tags ci ./...`; `go vet -tags ci ./...` passes.
+- `npm run build` in `frontend/` generates `frontend/dist`.
+- A Linux native build was verified with WebKitGTK 4.1 and tags `production webkit2_41`.
+- Native builds and interactive GUI testing should be done on their target operating systems. Installer generation and automated publishing are not configured.
+- The project uses Go 1.27.2 in its Dev Container and documented setup.
 
-- Pasan `go test -count=1 -race -tags ci ./...` y `go vet -tags ci ./...`.
-- `npm run build` en `frontend/` genera `frontend/dist`.
-- Se comprobó compilación cruzada Windows/amd64 con `CGO_ENABLED=0`.
-- El arranque nativo Linux se verificó con WebKitGTK 4.1 y los tags `production webkit2_41`; `timeout` cerró la ventana tras la prueba.
+## Working on another machine
 
-## Continuar en otro equipo
-
-La carpeta local aún no está configurada como repositorio Git ni tiene remoto de GitHub. Para publicar el código, inicializa Git, excluye configuración local y artefactos, y crea el repositorio público acordado con el nombre DiffTwin en la cuenta `jrcasanya`. Para trasladar proyectos, copia sus JSON desde `~/.config/DiffTwin/projects/` (o desde la carpeta DiffBench anterior, que se reutiliza si existe) o impórtalos desde la aplicación y vuelve a configurar sus credenciales en el otro equipo. Los secretos no se exportan; las variables, headers y otros datos del proyecto sí se guardan sin cifrar.
+The public repository is [github.com/jrcasanya/DiffTwin](https://github.com/jrcasanya/DiffTwin). Clone it and use either the Dev Container or the native workflow described in README. To transfer projects, import their JSON or copy the local data (`~/.config/DiffTwin/projects/` on Linux; Go's `os.UserConfigDir` determines user-specific paths on macOS/Windows). Credentials remain in each machine's secure system store and must be configured again.
