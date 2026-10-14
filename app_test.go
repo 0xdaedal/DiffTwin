@@ -87,6 +87,45 @@ func TestAppSaveProjectPreservesCollectionsAndSavesNestedCollection(t *testing.T
 	}
 }
 
+func TestAppMoveCollectionItemPersistsAcrossCollections(t *testing.T) {
+	projectStore, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(projectStore)
+	project, err := app.SaveProject(Project{
+		Name: "API", Primary: "https://stable.test", Candidate: "https://candidate.test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := app.SaveCollection(project.ID, Collection{
+		ID: "source", Name: "Source",
+		Folders: []Folder{{ID: "source-folder", Name: "Source folder", Requests: []Request{{
+			ID: "request", Name: "List", Method: "GET", Path: "/users",
+		}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination, err := app.SaveCollection(project.ID, Collection{
+		ID: "destination", Name: "Destination",
+		Folders: []Folder{{ID: "destination-folder", Name: "Destination folder"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.MoveCollectionItem(project.ID, source.ID, "source-folder", "request", "request", destination.ID, "destination-folder"); err != nil {
+		t.Fatal(err)
+	}
+	saved := domain.FindProject(app.GetProjects(), project.ID)
+	if saved == nil || len(saved.Collections[0].Folders[0].Requests) != 0 ||
+		saved.Collections[1].Folders[0].Requests[0].ID != "request" {
+		t.Fatalf("move was not persisted across collections: %#v", saved)
+	}
+}
+
 func TestAppSaveProjectAllowsMissingSecondaryDestination(t *testing.T) {
 	projectStore, err := storage.New(t.TempDir())
 	if err != nil {

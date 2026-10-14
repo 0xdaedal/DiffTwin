@@ -18,6 +18,8 @@ export function ImportPostmanCollection(arg1:string,arg2:string):Promise<main.Po
 
 export function ImportProjectConfig(arg1:string):Promise<domain.Project>;
 
+export function MoveCollectionItem(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string):Promise<void>;
+
 export function RunRequest(arg1:string,arg2:domain.Request):Promise<comparison.Result>;
 
 export function SaveCollection(arg1:string,arg2:domain.Collection):Promise<domain.Collection>;

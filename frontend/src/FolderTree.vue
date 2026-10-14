@@ -6,13 +6,19 @@ const props = defineProps({
   selectedFolderId: { type: String, default: "" },
   selectedRequestId: { type: String, default: "" },
   activeMenu: { type: String, default: "" },
-  searchTerm: { type: String, default: "" }
+  searchTerm: { type: String, default: "" },
+  collectionId: { type: String, required: true },
+  selectedCollectionId: { type: String, default: "" },
+  parentFolderId: { type: String, default: "" },
+  draggedItem: { type: Object, default: null },
+  dropTarget: { type: String, default: "" }
 });
-const emit = defineEmits(["select-folder", "select-request", "toggle-menu", "close-menus", "duplicate-request", "delete-request", "create-folder", "create-request", "rename-folder", "delete-folder"]);
+const emit = defineEmits(["select-folder", "select-request", "toggle-menu", "close-menus", "duplicate-request", "delete-request", "create-folder", "create-request", "rename-folder", "delete-folder", "drag-start", "drag-end", "drag-over", "drop-on-folder"]);
 const open = ref(true);
-const selected = computed(() => props.selectedFolderId === props.folder.id);
+const selected = computed(() => props.selectedCollectionId === props.collectionId && props.selectedFolderId === props.folder.id);
 const folderMenuKey = computed(() => `folder:${props.folder.id}`);
 const menuOpen = computed(() => props.activeMenu === folderMenuKey.value);
+const folderDropTarget = computed(() => `folder:${props.collectionId}:${props.folder.id}`);
 function requestMenuKey(id) {
   return `request:${id}`;
 }
@@ -39,7 +45,16 @@ watch(
 
 <template>
   <div class="tree-branch folder-branch">
-    <div class="tree-row" :class="{ selected, 'menu-open': menuOpen }">
+    <div
+      class="tree-row"
+      :class="{ selected, 'menu-open': menuOpen, 'drop-target': dropTarget === folderDropTarget }"
+      title="Arrastra la carpeta a otra carpeta o colección para moverla"
+      draggable="true"
+      @dragstart.stop="emit('drag-start', $event, { type: 'folder', id: folder.id, collectionId, parentId: parentFolderId })"
+      @dragend="emit('drag-end')"
+      @dragover.stop="emit('drag-over', $event, collectionId, folder.id)"
+      @drop.prevent.stop="emit('drop-on-folder', $event, collectionId, folder.id)"
+    >
       <button class="tree-toggle" @click="open = !open" :aria-label="isExpanded ? 'Contraer carpeta' : 'Expandir carpeta'" :aria-expanded="isExpanded">
         <svg class="tree-chevron" :class="{ expanded: isExpanded }" viewBox="0 0 16 16" aria-hidden="true">
           <path d="m5.5 6.5 2.5 2.5 2.5-2.5" />
@@ -64,11 +79,15 @@ watch(
         v-for="request in visibleRequests"
         :key="request.id"
         class="tree-row request-row"
-        :class="{ selected: selectedRequestId === request.id, 'menu-open': activeMenu === requestMenuKey(request.id) }"
+        :class="{ selected: selectedCollectionId === collectionId && selectedRequestId === request.id, 'menu-open': activeMenu === requestMenuKey(request.id) }"
         role="button"
         tabindex="0"
+        title="Arrastra la petición a una carpeta o colección para moverla"
+        draggable="true"
         @click="emit('select-request', request.id, folder.id)"
         @keydown.enter="emit('select-request', request.id, folder.id)"
+        @dragstart.stop="emit('drag-start', $event, { type: 'request', id: request.id, collectionId, parentId: folder.id })"
+        @dragend="emit('drag-end')"
       >
         <span class="tree-spacer"></span>
         <span class="method-badge" :class="`method-${request.method.toLowerCase()}`">{{ request.method }}</span>
@@ -85,10 +104,15 @@ watch(
         v-for="child in visibleFolders"
         :key="child.id"
         :folder="child"
+        :collection-id="collectionId"
+        :selected-collection-id="selectedCollectionId"
+        :parent-folder-id="folder.id"
         :selected-folder-id="selectedFolderId"
         :selected-request-id="selectedRequestId"
         :active-menu="activeMenu"
         :search-term="searchTerm"
+        :dragged-item="draggedItem"
+        :drop-target="dropTarget"
         @select-folder="emit('select-folder', $event)"
         @select-request="(id, parentId) => emit('select-request', id, parentId)"
         @toggle-menu="(type, id) => emit('toggle-menu', type, id)"
@@ -99,6 +123,10 @@ watch(
         @create-request="(parentId) => emit('create-request', parentId)"
         @rename-folder="(id) => emit('rename-folder', id)"
         @delete-folder="(id) => emit('delete-folder', id)"
+        @drag-start="(event, item) => emit('drag-start', event, item)"
+        @drag-end="emit('drag-end')"
+        @drag-over="(event, targetCollectionId, id) => emit('drag-over', event, targetCollectionId, id)"
+        @drop-on-folder="(event, targetCollectionId, id) => emit('drop-on-folder', event, targetCollectionId, id)"
       />
     </div>
   </div>

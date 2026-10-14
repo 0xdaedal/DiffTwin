@@ -39,6 +39,9 @@ const projectFileInput = ref(null);
 const postmanFileInput = ref(null);
 const expandedCollections = ref(new Set());
 const activeMenu = ref("");
+const draggedTreeItem = ref(null);
+const treeDropTarget = ref("");
+const movingTreeItem = ref(false);
 const collectionSearchOpen = ref(false);
 const collectionSearch = ref("");
 const collectionSearchInput = ref(null);
@@ -534,6 +537,88 @@ function closeMenus() {
 function toggleMenu(type, id = "") {
   const key = menuKey(type, id);
   activeMenu.value = activeMenu.value === key ? "" : key;
+}
+
+function treeDropTargetKey(type, collectionID, folderID = "") {
+  return type === "folder" ? `folder:${collectionID}:${folderID}` : `collection:${collectionID}`;
+}
+
+function startTreeDrag(event, item) {
+  draggedTreeItem.value = item;
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", `${item.type}:${item.id}`);
+  }
+  closeMenus();
+}
+
+function endTreeDrag() {
+  draggedTreeItem.value = null;
+  treeDropTarget.value = "";
+}
+
+function sourceFolderContains(folder, targetID) {
+  return (folder.folders || []).some((child) =>
+    child.id === targetID || sourceFolderContains(child, targetID)
+  );
+}
+
+function canDropTreeItem(targetCollectionID, targetFolderID = "") {
+  const item = draggedTreeItem.value;
+  if (!item || movingTreeItem.value) return false;
+  if (item.type === "request") {
+    return item.collectionId !== targetCollectionID || item.parentId !== targetFolderID;
+  }
+  if (item.type !== "folder") return false;
+  if (item.collectionId !== targetCollectionID) return true;
+  if (item.id === targetFolderID || item.parentId === targetFolderID) return false;
+  const sourceCollection = project.value?.collections.find((entry) => entry.id === item.collectionId);
+  const sourceFolder = findFolder(sourceCollection?.folders || [], item.id);
+  return !sourceFolder || !sourceFolderContains(sourceFolder, targetFolderID);
+}
+
+function treeDragOver(event, targetCollectionID, targetFolderID = "") {
+  if (!canDropTreeItem(targetCollectionID, targetFolderID)) {
+    treeDropTarget.value = "";
+    return;
+  }
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  treeDropTarget.value = treeDropTargetKey(targetFolderID ? "folder" : "collection", targetCollectionID, targetFolderID);
+}
+
+async function dropTreeItem(targetCollectionID, targetFolderID = "") {
+  if (!canDropTreeItem(targetCollectionID, targetFolderID)) return;
+  const item = draggedTreeItem.value;
+  if (!item || !project.value) return;
+  movingTreeItem.value = true;
+  try {
+    if (collection.value) await persistCollection();
+    await backend().MoveCollectionItem(
+      project.value.id,
+      item.collectionId,
+      item.parentId,
+      item.type,
+      item.id,
+      targetCollectionID,
+      targetFolderID
+    );
+    await refreshProjects();
+    const destination = project.value?.collections.find((entry) => entry.id === targetCollectionID);
+    if (destination) {
+      collectionId.value = destination.id;
+      expandedCollections.value.add(destination.id);
+      folderId.value = item.type === "folder" ? item.id : targetFolderID;
+      requestId.value = item.type === "request" ? item.id : "";
+      response.value = null;
+      flash(item.type === "folder" ? "Carpeta movida." : "Petición movida.");
+    }
+  } catch (error) {
+    flash(error.message || String(error), true);
+  } finally {
+    movingTreeItem.value = false;
+    endTreeDrag();
+  }
 }
 
 function flash(message, bad = false) {
@@ -1244,7 +1329,13 @@ onMounted(async () => {
         </div>
         <div class="collection-tree">
           <div v-for="item in visibleCollections" :key="item.id" class="collection-group">
-            <div class="tree-row collection-row" :class="{ selected: collectionId === item.id && !folderId && !requestId, 'menu-open': activeMenu === menuKey('collection', item.id) }">
+            <div
+              class="tree-row collection-row"
+              :class="{ selected: collectionId === item.id && !folderId && !requestId, 'menu-open': activeMenu === menuKey('collection', item.id), 'drop-target': treeDropTarget === treeDropTargetKey('collection', item.id) }"
+              title="Suelta aquí para mover a la colección"
+              @dragover="treeDragOver($event, item.id)"
+              @drop.prevent.stop="dropTreeItem(item.id)"
+            >
               <button
                 class="tree-toggle"
                 :aria-label="expandedCollections.has(item.id) ? 'Contraer colección' : 'Expandir colección'"
@@ -1279,15 +1370,19 @@ onMounted(async () => {
                 <button class="collection-menu-danger" @click="selectCollection(item); deleteCollection()">Eliminar colección</button>
               </div>
             </div>
-            <div v-if="(expandedCollections.has(item.id) || collectionSearch.trim()) && collectionId === item.id" class="tree-children">
+            <div v-if="expandedCollections.has(item.id) || collectionSearch.trim()" class="tree-children">
               <div v-for="request in (item.requests || []).filter((entry) => requestMatches(entry, collectionItemSearch(item).toLocaleLowerCase()))" :key="request.id" class="request-branch">
                 <div
                   class="tree-row request-row"
-                  :class="{ selected: requestId === request.id, 'menu-open': activeMenu === menuKey('request', request.id) }"
+                  :class="{ selected: collectionId === item.id && requestId === request.id, 'menu-open': activeMenu === menuKey('request', request.id) }"
                   role="button"
                   tabindex="0"
+                  title="Arrastra la petición a una carpeta o colección para moverla"
+                  draggable="true"
                   @click="selectRequest(request.id)"
                   @keydown.enter="selectRequest(request.id)"
+                  @dragstart.stop="startTreeDrag($event, { type: 'request', id: request.id, collectionId: item.id, parentId: '' })"
+                  @dragend="endTreeDrag"
                 >
                   <span class="tree-spacer"></span>
                   <span class="method-badge" :class="`method-${request.method.toLowerCase()}`">{{ request.method }}</span>
@@ -1305,10 +1400,14 @@ onMounted(async () => {
                 v-for="folder in item.folders || []"
                 :key="folder.id"
                 :folder="folder"
+                :collection-id="item.id"
+                :selected-collection-id="collectionId"
                 :selected-folder-id="folderId"
                 :selected-request-id="requestId"
                 :active-menu="activeMenu"
                 :search-term="collectionItemSearch(item)"
+                :dragged-item="draggedTreeItem"
+                :drop-target="treeDropTarget"
                 @select-folder="selectFolder"
                 @select-request="selectRequest"
                 @toggle-menu="toggleMenu"
@@ -1319,6 +1418,10 @@ onMounted(async () => {
                 @create-request="createRequest"
                 @rename-folder="renameFolder"
                 @delete-folder="deleteFolder"
+                @drag-start="startTreeDrag"
+                @drag-end="endTreeDrag"
+                @drag-over="(event, targetCollectionID, targetFolderID) => treeDragOver(event, targetCollectionID, targetFolderID)"
+                @drop-on-folder="(event, targetCollectionID, targetFolderID) => dropTreeItem(targetCollectionID, targetFolderID)"
               />
             </div>
           </div>

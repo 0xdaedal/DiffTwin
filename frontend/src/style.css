@@ -131,6 +131,9 @@ h1 { margin: 9px 0 6px; font-size: 27px; letter-spacing: -.8px; }
 .tree-row { width: 100%; min-height: 29px; display: flex; align-items: center; gap: 5px; padding: 2px 5px; border: 0; border-radius: 5px; color: var(--muted); background: transparent; text-align: left; cursor: pointer; }
 .tree-row:hover { background: var(--surface-hover); color: var(--text); }
 .tree-row.selected { background: #718df022; color: var(--text); }
+.tree-row[draggable="true"] { cursor: grab; }
+.tree-row[draggable="true"]:active { cursor: grabbing; }
+.tree-row.drop-target { outline: 1px dashed var(--accent); outline-offset: -1px; background: #718df022; color: var(--text); }
 .tree-toggle { flex: 0 0 19px; width: 19px; height: 23px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--faint); cursor: pointer; }
 .tree-chevron { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; transform: rotate(-90deg); transition: transform .14s ease; }
 .tree-chevron.expanded { transform: rotate(0); }

@@ -298,6 +298,16 @@ func (a *App) SaveCollection(projectID string, collection Collection) (Collectio
 	return collection, err
 }
 
+func (a *App) MoveCollectionItem(projectID, sourceCollectionID, sourceParentID, itemType, itemID, destinationCollectionID, destinationFolderID string) error {
+	return a.store.Update(func(projects *[]Project) error {
+		project := domain.FindProject(*projects, projectID)
+		if project == nil {
+			return os.ErrNotExist
+		}
+		return domain.MoveCollectionItem(project, sourceCollectionID, sourceParentID, itemType, itemID, destinationCollectionID, destinationFolderID)
+	})
+}
+
 func (a *App) DeleteCollection(projectID, collectionID string) error {
 	return a.store.Update(func(projects *[]Project) error {
 		project := domain.FindProject(*projects, projectID)

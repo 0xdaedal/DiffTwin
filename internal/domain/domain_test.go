@@ -77,3 +77,60 @@ func TestCloneProjectsCopiesDestinationVariables(t *testing.T) {
 		t.Fatal("cloning projects should deep-copy destination variable maps")
 	}
 }
+
+func TestMoveCollectionItemMovesRequestsAndFolders(t *testing.T) {
+	project := Project{Collections: []Collection{
+		{
+			ID: "source",
+			Folders: []Folder{{
+				ID: "source-folder", Name: "Source",
+				Requests: []Request{{ID: "request", Name: "List", Method: "GET", Path: "/users", Headers: map[string]string{"X-Test": "yes"}}},
+				Folders:  []Folder{{ID: "nested", Name: "Nested"}},
+			}},
+		},
+		{
+			ID: "destination",
+			Folders: []Folder{{
+				ID: "destination-folder", Name: "Destination",
+			}},
+		},
+	}}
+
+	if err := MoveCollectionItem(&project, "source", "source-folder", "request", "request", "destination", "destination-folder"); err != nil {
+		t.Fatal(err)
+	}
+	if err := MoveCollectionItem(&project, "source", "", "folder", "source-folder", "destination", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	source := collectionByID(&project, "source")
+	destination := collectionByID(&project, "destination")
+	if len(source.Folders) != 0 {
+		t.Fatalf("source folder was not removed: %#v", source.Folders)
+	}
+	if len(destination.Folders[0].Requests) != 1 || destination.Folders[0].Requests[0].Headers["X-Test"] != "yes" {
+		t.Fatalf("moved request data was not preserved: %#v", destination.Folders[0].Requests)
+	}
+	movedFolder := destination.Folders[1]
+	if movedFolder.ID != "source-folder" || len(movedFolder.Folders) != 1 || movedFolder.Folders[0].ID != "nested" {
+		t.Fatalf("moved folder contents were not preserved: %#v", movedFolder)
+	}
+}
+
+func TestMoveCollectionItemRejectsFolderDescendantsWithoutMutation(t *testing.T) {
+	project := Project{Collections: []Collection{{
+		ID: "collection",
+		Folders: []Folder{{
+			ID:      "parent",
+			Folders: []Folder{{ID: "child"}},
+		}},
+	}}}
+
+	if err := MoveCollectionItem(&project, "collection", "", "folder", "parent", "collection", "child"); err == nil {
+		t.Fatal("moving a folder into its descendant should fail")
+	}
+	if len(project.Collections[0].Folders) != 1 ||
+		project.Collections[0].Folders[0].Folders[0].ID != "child" {
+		t.Fatalf("invalid move changed the folder tree: %#v", project.Collections[0].Folders)
+	}
+}

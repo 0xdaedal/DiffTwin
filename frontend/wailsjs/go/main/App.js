@@ -30,6 +30,10 @@ export function ImportProjectConfig(arg1) {
   return window['go']['main']['App']['ImportProjectConfig'](arg1);
 }
 
+export function MoveCollectionItem(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['MoveCollectionItem'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+}
+
 export function RunRequest(arg1, arg2) {
   return window['go']['main']['App']['RunRequest'](arg1, arg2);
 }
