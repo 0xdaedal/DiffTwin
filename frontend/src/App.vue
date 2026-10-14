@@ -14,6 +14,8 @@ const requestId = ref("");
 const requestPath = ref("");
 const response = ref(null);
 const busy = ref(false);
+const collectionRunning = ref(false);
+const collectionRun = ref(null);
 const activeEditorTab = ref("params");
 const queryParams = ref([]);
 const notice = ref("");
@@ -130,6 +132,9 @@ const selectedFolder = computed(() => findFolder(collection.value?.folders || []
 const selectedRequest = computed(() => findRequest(collection.value, requestId.value));
 const visibleCollections = computed(() => (project.value?.collections || []).filter((item) => collectionMatches(item, collectionSearch.value)));
 const projectLabel = computed(() => project.value?.name || "Selecciona un proyecto");
+const visibleCollectionRun = computed(() =>
+  collectionRun.value?.collectionId === collection.value?.id ? collectionRun.value : null
+);
 const latencySummaries = computed(() => {
   if (!response.value) return [];
   const primaryDuration = response.value.primary.duration_ms;
@@ -461,6 +466,26 @@ function findRequest(item, id) {
 function countRequests(requests, folders) {
   return requests.length + folders.reduce((sum, folder) =>
     sum + countRequests(folder.requests || [], folder.folders || []), 0);
+}
+
+function collectCollectionRequests(item) {
+  const requests = (item.requests || []).map((request) => ({
+    request: JSON.parse(JSON.stringify(request)),
+    folderId: ""
+  }));
+  const visitFolders = (folders) => {
+    for (const folder of folders || []) {
+      for (const request of folder.requests || []) {
+        requests.push({
+          request: JSON.parse(JSON.stringify(request)),
+          folderId: folder.id
+        });
+      }
+      visitFolders(folder.folders || []);
+    }
+  };
+  visitFolders(item.folders || []);
+  return requests;
 }
 
 function matchesSearch(value, query) {
@@ -940,6 +965,7 @@ async function deleteRequest() {
 }
 
 async function runRequest() {
+  if (busy.value || !project.value || !selectedRequest.value) return;
   busy.value = true;
   response.value = null;
   try {
@@ -950,6 +976,87 @@ async function runRequest() {
   } finally {
     busy.value = false;
   }
+}
+
+function collectionResultStatus(item) {
+  if (item.status === "pending") return "Pendiente";
+  if (item.status === "running") return "Ejecutando…";
+  if (item.status === "error") return "Error";
+  return item.status === "different" ? "Hay diferencias" : "Coincide";
+}
+
+async function runCollection() {
+  if (busy.value || !project.value || !collection.value) return;
+  const runProjectId = project.value.id;
+  const runCollectionId = collection.value.id;
+  busy.value = true;
+  collectionRunning.value = true;
+  try {
+    await persistCollection();
+    const savedCollection = project.value?.collections.find((item) => item.id === runCollectionId);
+    const requests = savedCollection ? collectCollectionRequests(savedCollection) : [];
+    if (!requests.length) {
+      flash("La colección no tiene peticiones para ejecutar.", true);
+      return;
+    }
+
+    const run = {
+      projectId: runProjectId,
+      collectionId: runCollectionId,
+      collectionName: savedCollection.name,
+      completed: 0,
+      total: requests.length,
+      items: requests.map((item) => ({ ...item, status: "pending", result: null, error: "" }))
+    };
+    collectionRun.value = run;
+    response.value = null;
+    const currentRun = collectionRun.value;
+
+    for (const item of currentRun.items) {
+      item.status = "running";
+      await nextTick();
+      try {
+        item.result = await backend().RunRequest(runProjectId, item.request);
+        const responses = [item.result.primary, item.result.candidate];
+        if (item.result.secondary_enabled) responses.push(item.result.secondary);
+        if (responses.some((result) => result.error)) {
+          item.status = "error";
+        } else {
+          item.status = item.result.candidate_differs ? "different" : "same";
+        }
+      } catch (error) {
+        item.error = error.message || String(error);
+        item.status = "error";
+      } finally {
+        currentRun.completed += 1;
+      }
+    }
+  } catch (error) {
+    flash(error.message || String(error), true);
+  } finally {
+    collectionRunning.value = false;
+    busy.value = false;
+  }
+}
+
+async function runCollectionFromMenu(item) {
+  selectCollection(item);
+  await nextTick();
+  await runCollection();
+}
+
+function showCollectionRunResult(item) {
+  const run = collectionRun.value;
+  if (!run) return;
+  if (projectId.value !== run.projectId) openProject(run.projectId);
+  const runCollection = project.value?.collections.find((entry) => entry.id === run.collectionId);
+  if (!runCollection || !findRequest(runCollection, item.request.id)) {
+    flash("La petición de este resultado ya no está en el proyecto.", true);
+    return;
+  }
+  selectCollection(runCollection);
+  selectRequest(item.request.id, item.folderId);
+  response.value = item.result;
 }
 
 function readSelectedFile(event) {
@@ -1163,6 +1270,11 @@ onMounted(async () => {
                 <button @click="selectCollection(item); createRequest()">＋ Nueva petición</button>
                 <button @click="selectCollection(item); createFolder()">＋ Nueva carpeta</button>
                 <div class="collection-menu-separator"></div>
+                <button
+                  :disabled="busy || countRequests(item.requests || [], item.folders || []) === 0"
+                  @click="closeMenus(); runCollectionFromMenu(item)"
+                >▶ Ejecutar colección ({{ countRequests(item.requests || [], item.folders || []) }})</button>
+                <div class="collection-menu-separator"></div>
                 <button @click="selectCollection(item); renameCollection()">Renombrar colección</button>
                 <button class="collection-menu-danger" @click="selectCollection(item); deleteCollection()">Eliminar colección</button>
               </div>
@@ -1249,7 +1361,26 @@ onMounted(async () => {
             <template v-if="selectedRequest"><span>/</span><strong>{{ selectedRequest.name }}</strong></template>
           </div>
         </div>
-
+        <section v-if="visibleCollectionRun" class="collection-run-panel" aria-live="polite">
+          <header class="collection-run-heading">
+            <strong>RESULTADOS · {{ visibleCollectionRun.collectionName }}</strong>
+            <span>{{ visibleCollectionRun.completed }}/{{ visibleCollectionRun.total }} completadas</span>
+          </header>
+          <div class="collection-run-list">
+            <button
+              v-for="(item, index) in visibleCollectionRun.items"
+              :key="`${item.request.id}-${index}`"
+              class="collection-run-item"
+              :class="`collection-run-${item.status}`"
+              :disabled="item.status === 'pending' || item.status === 'running'"
+              @click="showCollectionRunResult(item)"
+            >
+              <span class="collection-run-name">{{ item.request.name }}</span>
+              <span class="collection-run-status">{{ collectionResultStatus(item) }}</span>
+              <span v-if="item.error" class="collection-run-message-error" :title="item.error">{{ item.error }}</span>
+            </button>
+          </div>
+        </section>
         <div class="target-strip" :class="{ 'target-strip-two': !project.secondary }">
           <button type="button" class="target-chip target-chip-button" aria-label="Editar estable principal" @click="editProject('primary')">
             <i class="target-dot stable"></i><span class="target-chip-content"><span>ESTABLE PRINCIPAL</span><strong>{{ project.primary }}</strong></span>

@@ -6,6 +6,8 @@ DiffTwin is a Go/Wails desktop application for comparing HTTP requests against a
 
 The application includes a dashboard, project selector, nested collection/folder navigation, request editor with Params/Headers/Body tabs, and comparisons across up to three destinations. Comparison details include JSON paths that differ between the two stable destinations. The verdict considers status, response headers (excluding volatile/transport headers such as `Date`, `Content-Length`, and `CF-Ray`; `NEL` and `Report-To` remain comparable), and body. Latency is displayed but does not affect the verdict. JSON paths can be ignored with exact or wildcard patterns in project options. Shared variables can be overridden per destination for paths, query parameters, headers, and bodies. Authentication is independent per destination (none, Bearer, Basic, or API key in header/query); secrets are stored in the operating system credential store, not in project JSON. Postman v2.0/v2.1 import preserves folder hierarchy, paths/query, headers, raw bodies, and collection variables, and reports known unsupported items.
 
+Collections can be executed sequentially in displayed order. The workspace shows progress and per-request outcomes, continues after a request fails, and allows opening each completed comparison. The existing single-request flow remains available.
+
 The **Probar ejemplo** dashboard action idempotently creates or opens the `Demo: comparación de APIs` project, selects its request, and uses HTTPBin to demonstrate a JSON difference at `$.url`. It requires an internet connection; do not send sensitive data to the public service.
 
 ## Code layout
@@ -18,14 +20,10 @@ The **Probar ejemplo** dashboard action idempotently creates or opens the `Demo:
 - `frontend/src`: Vue interface and styles; `frontend/dist` contains assets embedded in the app.
 - `main.go`: Wails startup and legacy HTTP handlers retained for compatibility/tests.
 
-## Agreed improvements not yet implemented
+## Next improvement
 
-Implement these one at a time:
+**Comparison history:** browse previous runs and inspect their responses and differences. Define its UX and persistence before implementation; keep credentials out of any stored run data.
 
-1. **Collection execution:** run all requests in a collection and show progress and per-request results.
-2. **Comparison history:** browse previous runs and inspect their responses and differences.
-
-Collection execution is the next agreed improvement. Define its UX and persistence when starting that work, and preserve the existing single-request flow.
 
 ## Development workflow
 
