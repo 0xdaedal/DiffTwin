@@ -24,6 +24,7 @@ The **Probar ejemplo** dashboard action idempotently creates or opens the `Demo:
 
 **Comparison history:** browse previous runs and inspect their responses and differences. Define its UX and persistence before implementation; keep credentials out of any stored run data.
 
+**Future release automation:** derive the next semantic version and changelog from Conventional Commits, then create the version tag that triggers the release workflow. Choose and document the release policy/tool before implementing this.
 
 ## Development workflow
 
@@ -39,7 +40,7 @@ See the [native development workflow in README](README.md#native-development-wor
 - Go tests pass with `go test -count=1 -race -tags ci ./...`; `go vet -tags ci ./...` passes.
 - `npm run build` in `frontend/` generates `frontend/dist`.
 - A Linux native build was verified with WebKitGTK 4.1 and tags `production webkit2_41`.
-- Native builds and interactive GUI testing should be done on their target operating systems. Installer generation and automated publishing are not configured.
+- Native builds and interactive GUI testing should be done on their target operating systems. GitHub Actions validates PRs and publishes unsigned Linux, Windows, and universal macOS artifacts for pushed `vMAJOR.MINOR.PATCH` tags; see the release instructions in README.
 - The project uses Go 1.27.2 in its Dev Container and documented setup.
 
 ## Working on another machine

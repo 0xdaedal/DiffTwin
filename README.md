@@ -131,7 +131,27 @@ wails dev
 
 To disconnect VS Code from the container, run **Dev Containers: Reopen Folder Locally** or **Close Remote Connection** from the Command Palette. This disconnects VS Code but does not stop host applications or terminals. To stop a still-running container, stop it from Docker Desktop or use Docker Engine.
 
-Build native executables on their target operating systems: run `wails build` on macOS or Windows; on Ubuntu 24.04, run `wails build -tags webkit2_41`. Installer generation and automated publishing are not configured yet.
+Build native executables on their target operating systems: run `wails build` on macOS or Windows; on Ubuntu 24.04, run `wails build -tags webkit2_41`. Installer generation and automated signing/notarization are not configured yet.
+
+## GitHub Actions and releases
+
+Pull requests to `main` and pushes to `main` run Go tests, `go vet`, and the frontend production build. Pushing a stable version tag in `vMAJOR.MINOR.PATCH` format (for example, `v1.2.3`) runs the same validation, then builds native artifacts on Linux, Windows, and macOS runners. After all builds succeed, the workflow publishes a GitHub Release with:
+
+- `difftwin-linux-amd64.tar.gz` containing the Linux executable.
+- `difftwin-windows-amd64.zip` containing the Windows executable.
+- `difftwin-macos-universal.zip` containing a universal Intel/Apple Silicon `.app`.
+- `SHA256SUMS` for verifying the downloaded archives.
+
+To publish a release, first ensure the desired commit is on `main`, then create and push a version tag:
+
+```sh
+git switch main
+git pull --ff-only
+git tag -a v1.2.3 -m "DiffTwin v1.2.3"
+git push origin v1.2.3
+```
+
+These initial releases are not code-signed or notarized. Operating systems may show security warnings when opening downloaded apps; do not treat a successful build as a signed, trusted distribution.
 
 ## Features
 
