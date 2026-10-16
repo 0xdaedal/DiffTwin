@@ -155,6 +155,8 @@ These initial releases are not code-signed or notarized. Operating systems may s
 
 ## Features
 
+For step-by-step instructions on installing and using DiffTwin, see the [User Manual](docs/user-manual.md).
+
 The dashboard displays projects as cards. **Probar ejemplo** creates or opens the idempotent `Demo: comparación de APIs` project and selects its request. It calls HTTPBin, a public echo service: the primary and secondary stable destinations use the same route, while the candidate uses a different route, producing a difference at `$.url`. An internet connection is required. Do not send secrets or sensitive data to this public service.
 
 Projects contain collections, nested folders, and requests. Drag requests or folders onto a folder or collection in the workspace tree to move them, including between collections in the same project. Run a whole collection sequentially in its displayed order; DiffTwin shows progress and per-request outcomes, continues after individual failures, and lets you open each completed comparison. Each request still runs against its configured destinations in parallel. Authentication is configured independently for the primary stable, candidate, and optional secondary stable destinations: none, Bearer, Basic, or API key in a header/query parameter. The request editor has Params, Headers, and Body tabs; query parameters can be edited in a table or directly in the URL.
