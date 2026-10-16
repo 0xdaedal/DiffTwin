@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { translate } from "./i18n";
 
 const props = defineProps({
@@ -17,6 +17,9 @@ const props = defineProps({
 });
 const emit = defineEmits(["select-folder", "select-request", "toggle-menu", "close-menus", "duplicate-request", "delete-request", "create-folder", "create-request", "rename-folder", "delete-folder", "drag-start", "drag-end", "drag-over", "drop-on-folder"]);
 const open = ref(true);
+const isRenaming = ref(false);
+const renameDraft = ref("");
+const renameInput = ref(null);
 const t = (source) => translate(props.locale, source);
 const selected = computed(() => props.selectedCollectionId === props.collectionId && props.selectedFolderId === props.folder.id);
 const folderMenuKey = computed(() => `folder:${props.folder.id}`);
@@ -24,6 +27,24 @@ const menuOpen = computed(() => props.activeMenu === folderMenuKey.value);
 const folderDropTarget = computed(() => `folder:${props.collectionId}:${props.folder.id}`);
 function requestMenuKey(id) {
   return `request:${id}`;
+}
+function startRename() {
+  renameDraft.value = props.folder.name;
+  isRenaming.value = true;
+  emit("close-menus");
+  nextTick(() => {
+    renameInput.value?.focus();
+    renameInput.value?.select();
+  });
+}
+function cancelRename() {
+  isRenaming.value = false;
+  renameDraft.value = props.folder.name;
+}
+function commitRename() {
+  if (!isRenaming.value) return;
+  isRenaming.value = false;
+  emit("rename-folder", props.folder.id, renameDraft.value);
 }
 const normalizedSearch = computed(() => props.searchTerm.trim().toLocaleLowerCase());
 const visibleRequests = computed(() => (props.folder.requests || []).filter((request) =>
@@ -63,7 +84,22 @@ watch(
           <path d="m5.5 6.5 2.5 2.5 2.5-2.5" />
         </svg>
       </button>
-      <button class="tree-label folder-label" @click="emit('select-folder', folder.id)">
+      <div v-if="isRenaming" class="tree-label folder-label tree-label-editing">
+        <span class="folder-icon">▰</span>
+        <input
+          ref="renameInput"
+          v-model="renameDraft"
+          class="tree-rename-input"
+          :aria-label="t('Nombre de la carpeta')"
+          :title="t('Pulsa Enter para guardar o Escape para cancelar.')"
+          @click.stop
+          @dragstart.stop.prevent
+          @keydown.enter.prevent.stop="commitRename"
+          @keydown.esc.prevent.stop="cancelRename"
+          @blur="commitRename"
+        >
+      </div>
+      <button v-else class="tree-label folder-label" @click="emit('select-folder', folder.id)">
         <span class="folder-icon">▰</span><span class="tree-name">{{ folder.name }}</span>
       </button>
       <div class="tree-actions">
@@ -73,7 +109,7 @@ watch(
         <button @click="emit('close-menus'); emit('create-request', folder.id)">＋ {{ t("Nueva petición") }}</button>
         <button @click="emit('close-menus'); emit('create-folder', folder.id)">＋ {{ t("Nueva subcarpeta") }}</button>
         <div class="collection-menu-separator"></div>
-        <button @click="emit('close-menus'); emit('rename-folder', folder.id)">{{ t("Renombrar carpeta") }}</button>
+        <button @click="startRename">{{ t("Renombrar carpeta") }}</button>
         <button class="collection-menu-danger" @click="emit('close-menus'); emit('delete-folder', folder.id)">{{ t("Eliminar carpeta") }}</button>
       </div>
     </div>
@@ -125,7 +161,7 @@ watch(
         @delete-request="(id, parentId) => emit('delete-request', id, parentId)"
         @create-folder="(parentId) => emit('create-folder', parentId)"
         @create-request="(parentId) => emit('create-request', parentId)"
-        @rename-folder="(id) => emit('rename-folder', id)"
+        @rename-folder="(id, name) => emit('rename-folder', id, name)"
         @delete-folder="(id) => emit('delete-folder', id)"
         @drag-start="(event, item) => emit('drag-start', event, item)"
         @drag-end="emit('drag-end')"

@@ -44,6 +44,9 @@ const projectFileInput = ref(null);
 const postmanFileInput = ref(null);
 const expandedCollections = ref(new Set());
 const activeMenu = ref("");
+const renamingCollectionId = ref("");
+const collectionRenameDraft = ref("");
+const collectionRenameInput = ref(null);
 const draggedTreeItem = ref(null);
 const treeDropTarget = ref("");
 const movingTreeItem = ref(false);
@@ -880,12 +883,38 @@ async function createCollection() {
   }
 }
 
-async function renameCollection() {
-  const name = window.prompt(t("Nombre de la colección"), collection.value.name);
-  if (!name?.trim()) return;
-  collection.value.name = name.trim();
+function startCollectionRename(item) {
+  renamingCollectionId.value = item.id;
+  collectionRenameDraft.value = item.name;
+  closeMenus();
+  nextTick(() => {
+    collectionRenameInput.value?.focus();
+    collectionRenameInput.value?.select();
+  });
+}
+
+function cancelCollectionRename(item) {
+  if (renamingCollectionId.value !== item.id) return;
+  renamingCollectionId.value = "";
+  collectionRenameDraft.value = item.name;
+}
+
+async function saveCollectionRename(item) {
+  if (renamingCollectionId.value !== item.id) return;
+  const name = collectionRenameDraft.value.trim();
+  if (!name) {
+    cancelCollectionRename(item);
+    flash(t("El nombre no puede estar vacío."), true);
+    return;
+  }
+  renamingCollectionId.value = "";
+  if (name === item.name) return;
+
   try {
-    await persistCollection();
+    const updatedCollection = JSON.parse(JSON.stringify(item));
+    updatedCollection.name = name;
+    await backend().SaveCollection(project.value.id, updatedCollection);
+    await refreshProjects();
     flash(t("Colección renombrada."));
   } catch (error) {
     flash(error.message || String(error), true);
@@ -948,13 +977,43 @@ function updateFolder(folders, id, action) {
   return folders.some((folder) => updateFolder(folder.folders || [], id, action));
 }
 
-function renameFolder(id) {
-  const target = findFolder(collection.value.folders || [], id);
-  const name = window.prompt(t("Nombre de la carpeta"), target?.name || "");
-  if (!name?.trim()) return;
-  target.name = name.trim();
-  persistCollection().then(() => flash(t("Carpeta renombrada.")))
-    .catch((error) => flash(error.message || String(error), true));
+function renameFolderInTree(folders, id, name) {
+  for (const folder of folders || []) {
+    if (folder.id === id) {
+      folder.name = name;
+      return true;
+    }
+    if (renameFolderInTree(folder.folders || [], id, name)) return true;
+  }
+  return false;
+}
+
+async function renameFolder(collectionID, id, rawName) {
+  const targetCollection = project.value?.collections.find((item) => item.id === collectionID);
+  if (!targetCollection) {
+    flash(t("No se encontró la carpeta que se iba a renombrar."), true);
+    return;
+  }
+  const name = rawName.trim();
+  if (!name) {
+    flash(t("El nombre no puede estar vacío."), true);
+    return;
+  }
+  const updatedCollection = JSON.parse(JSON.stringify(targetCollection));
+  const folder = findFolder(updatedCollection.folders || [], id);
+  if (!folder) {
+    flash(t("No se encontró la carpeta que se iba a renombrar."), true);
+    return;
+  }
+  if (name === folder.name) return;
+  renameFolderInTree(updatedCollection.folders, id, name);
+  try {
+    await backend().SaveCollection(project.value.id, updatedCollection);
+    await refreshProjects();
+    flash(t("Carpeta renombrada."));
+  } catch (error) {
+    flash(error.message || String(error), true);
+  }
 }
 
 function deleteFolder(id) {
@@ -1439,7 +1498,21 @@ onMounted(async () => {
                   <path d="m5.5 6.5 2.5 2.5 2.5-2.5" />
                 </svg>
               </button>
-              <button class="tree-label" @click="selectCollection(item)">
+              <div v-if="renamingCollectionId === item.id" class="tree-label tree-label-editing">
+                <span class="collection-icon">▤</span>
+                <input
+                  ref="collectionRenameInput"
+                  v-model="collectionRenameDraft"
+                  class="tree-rename-input"
+                  :aria-label="t('Nombre de la colección')"
+                  :title="t('Pulsa Enter para guardar o Escape para cancelar.')"
+                  @click.stop
+                  @keydown.enter.prevent="saveCollectionRename(item)"
+                  @keydown.esc.prevent="cancelCollectionRename(item)"
+                  @blur="saveCollectionRename(item)"
+                >
+              </div>
+              <button v-else class="tree-label" @click="selectCollection(item)">
                 <span class="collection-icon">▤</span><span class="tree-name">{{ item.name }}</span>
               </button>
               <div class="tree-actions">
@@ -1459,7 +1532,7 @@ onMounted(async () => {
                   @click="closeMenus(); runCollectionFromMenu(item)"
                 >▶ {{ t("Ejecutar colección ({count})", { count: countRequests(item.requests || [], item.folders || []) }) }}</button>
                 <div class="collection-menu-separator"></div>
-                <button @click="selectCollection(item); renameCollection()">{{ t("Renombrar colección") }}</button>
+                <button @click="selectCollection(item); startCollectionRename(item)">{{ t("Renombrar colección") }}</button>
                 <button class="collection-menu-danger" @click="selectCollection(item); deleteCollection()">{{ t("Eliminar colección") }}</button>
               </div>
             </div>
@@ -1510,7 +1583,7 @@ onMounted(async () => {
                 @delete-request="deleteRequestByID"
                 @create-folder="createFolder"
                 @create-request="createRequest"
-                @rename-folder="renameFolder"
+                @rename-folder="(id, name) => renameFolder(item.id, id, name)"
                 @delete-folder="deleteFolder"
                 @drag-start="startTreeDrag"
                 @drag-end="endTreeDrag"

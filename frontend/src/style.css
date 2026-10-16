@@ -147,6 +147,8 @@ h1 { margin: 9px 0 6px; font-size: 27px; letter-spacing: -.8px; }
 .tree-chevron { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; transform: rotate(-90deg); transition: transform .14s ease; }
 .tree-chevron.expanded { transform: rotate(0); }
 .tree-label { flex: 1; min-width: 0; display: flex; gap: 8px; align-items: center; padding: 3px 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.tree-label-editing { cursor: text; }
+.tree-rename-input { flex: 1; min-width: 0; width: 100%; height: 24px; padding: 2px 5px; border: 1px solid var(--accent); border-radius: 4px; background: var(--surface); color: var(--text); font: inherit; }
 .tree-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .collection-icon, .folder-icon { color: var(--accent); font-size: 13px; }
 .folder-icon { color: var(--amber); }

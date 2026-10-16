@@ -22,3 +22,14 @@ test("translate keeps Spanish messages and falls back to unknown source text", (
   assert.equal(translate("es", "Proyecto creado."), "Proyecto creado.");
   assert.equal(translate("en", "An untranslated message."), "An untranslated message.");
 });
+
+test("rename keyboard guidance is localized", () => {
+  assert.equal(
+    translate("en", "Pulsa Enter para guardar o Escape para cancelar."),
+    "Press Enter to save or Escape to cancel."
+  );
+  assert.equal(
+    translate("es", "Pulsa Enter para guardar o Escape para cancelar."),
+    "Pulsa Enter para guardar o Escape para cancelar."
+  );
+});

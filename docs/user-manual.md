@@ -37,9 +37,11 @@ To edit project details later, select **Project settings** (*Configuración del 
 Projects organize requests into collections and folders.
 
 1. Select **New collection** (*Nueva colección*) in the workspace sidebar.
-2. Use a collection's options menu to add a request or folder, rename it, run the collection, or delete it.
-3. Select a request to edit it. You can also drag requests or folders onto another folder or collection to move them within the project.
-4. Select **Save** (*Guardar*) in the request editor to keep your changes.
+2. Open a collection's **···** options menu to add a request or folder, rename it, run the collection, or delete it.
+3. To rename a collection or folder, choose **Rename** (*Renombrar*) from its options menu. Edit the name in the list, then press **Enter** to save. Press **Escape** to cancel. Clicking outside the name field also saves the change.
+4. To rename a project, open **Project settings** (*Configuración del proyecto*) from the gear control in the top bar, change its name, and save the changes.
+5. Select a request to edit it. You can also drag requests or folders onto another folder or collection to move them within the project.
+6. Select **Save** (*Guardar*) in the request editor to keep your changes.
 
 ### Configure a request
 
