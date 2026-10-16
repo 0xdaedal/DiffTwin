@@ -10,6 +10,8 @@ export function DeleteCollection(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteProject(arg1:string):Promise<void>;
 
+export function ExportProject(arg1:string):Promise<string>;
+
 export function GetProjectAuth(arg1:string):Promise<main.ProjectAuthSettings>;
 
 export function GetProjects():Promise<Array<domain.Project>>;
@@ -17,6 +19,8 @@ export function GetProjects():Promise<Array<domain.Project>>;
 export function ImportPostmanCollection(arg1:string,arg2:string):Promise<main.PostmanImportResult>;
 
 export function ImportProjectConfig(arg1:string):Promise<domain.Project>;
+
+export function ImportProjectConfigWithAction(arg1:string,arg2:string):Promise<domain.Project>;
 
 export function MoveCollectionItem(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string):Promise<void>;
 

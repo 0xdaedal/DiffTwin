@@ -228,6 +228,107 @@ func TestAppImportProjectConfig(t *testing.T) {
 	if project.ID == "" || project.Name != "Imported API" {
 		t.Fatalf("unexpected imported project: %#v", project)
 	}
+	if _, err := app.ImportProjectConfig(string(raw)); err == nil {
+		t.Fatal("expected duplicate project ID to require an explicit choice")
+	}
+	copy, err := app.ImportProjectConfigWithAction(string(raw), "copy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if copy.ID == project.ID || copy.Name != "Imported API (copia)" {
+		t.Fatalf("unexpected imported copy: %#v", copy)
+	}
+	copy, err = app.ImportProjectConfigWithAction(string(raw), "copy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if copy.Name != "Imported API (copia 2)" {
+		t.Fatalf("expected a unique copy name, got %q", copy.Name)
+	}
+}
+
+func TestAppReplaceImportedProjectRemovesOldCredentials(t *testing.T) {
+	projectStore, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(projectStore)
+	credentialStore := &memoryCredentialStore{values: map[string]string{}}
+	app.credentials = credentialStore
+
+	existing, err := app.SaveProjectWithAuth(Project{
+		Name: "Existing API", Primary: "https://stable.test", Candidate: "https://candidate.test",
+		Auth:        map[string]domain.DestinationAuth{"primary": {Type: "bearer"}},
+		Collections: []Collection{{ID: "old", Name: "Old collection"}},
+	}, map[string]domain.AuthCredentials{"primary": {Token: "old-secret"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(Project{
+		ID: existing.ID, Name: "Replacement API", Primary: "https://new-stable.test", Candidate: "https://new-candidate.test",
+		Collections: []Collection{{ID: "new", Name: "New collection"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	replaced, err := app.ImportProjectConfigWithAction(string(raw), "replace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replaced.Name != "Replacement API" || len(replaced.Collections) != 1 || replaced.Collections[0].ID != "new" {
+		t.Fatalf("project configuration was not replaced: %#v", replaced)
+	}
+	if hasConfiguredAuth(replaced.Auth) {
+		t.Fatalf("replaced project retained stale authentication metadata: %#v", replaced.Auth)
+	}
+	if _, exists := credentialStore.values[existing.ID]; exists {
+		t.Fatal("credentials for the replaced project were not removed")
+	}
+}
+
+func TestExportProjectConfigOmitsAuthentication(t *testing.T) {
+	project := Project{
+		ID: "exported-api", Name: "Exported API",
+		Primary: "https://stable.test", Candidate: "https://candidate.test",
+		Auth: map[string]domain.DestinationAuth{
+			"primary": {Type: "bearer"},
+		},
+		Collections: []Collection{{
+			ID: "users", Name: "Users",
+			Requests: []Request{{ID: "list-users", Name: "List users", Method: "GET", Path: "/users"}},
+		}},
+	}
+
+	raw, err := json.Marshal(exportProjectConfig(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"auth"`) || strings.Contains(string(raw), "token-secret") {
+		t.Fatalf("export contains authentication data: %s", raw)
+	}
+	var exported projectConfigExport
+	if err := json.Unmarshal(raw, &exported); err != nil {
+		t.Fatal(err)
+	}
+	if exported.ID != project.ID || len(exported.Collections) != 1 ||
+		exported.Collections[0].Requests[0].Path != "/users" {
+		t.Fatalf("export did not preserve project configuration: %#v", exported)
+	}
+}
+
+func TestProjectExportFilename(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		want string
+	}{
+		{name: "Mi API / Pruebas", want: "Mi-API-Pruebas.json"},
+		{name: "///", want: "proyecto.json"},
+	} {
+		if got := projectExportFilename(test.name); got != test.want {
+			t.Errorf("projectExportFilename(%q) = %q, want %q", test.name, got, test.want)
+		}
+	}
 }
 
 func TestAppStoresDestinationCredentialsOutsideProjectJSON(t *testing.T) {

@@ -5,12 +5,18 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+
+	"github.com/jrcasanya/difftwin/internal/domain"
 )
 
 //go:embed all:frontend/dist
@@ -40,5 +46,43 @@ func runWails(projectStore *store) error {
 	})
 }
 
-func (a *App) startup(context.Context) {
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+}
+
+func (a *App) ExportProject(projectID string) (string, error) {
+	project := domain.FindProject(a.store.Snapshot(), projectID)
+	if project == nil {
+		return "", os.ErrNotExist
+	}
+	if a.ctx == nil {
+		return "", fmt.Errorf("el contexto de la aplicación aún no está disponible")
+	}
+
+	path, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+		Title:           "Exportar proyecto",
+		DefaultFilename: projectExportFilename(project.Name),
+		Filters: []wailsruntime.FileFilter{{
+			DisplayName: "Configuración de DiffTwin (*.json)",
+			Pattern:     "*.json",
+		}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("abrir el diálogo para exportar el proyecto: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+	if filepath.Ext(path) == "" {
+		path += ".json"
+	}
+
+	data, err := json.MarshalIndent(exportProjectConfig(*project), "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("codificar el proyecto para exportarlo: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return "", fmt.Errorf("guardar el proyecto exportado: %w", err)
+	}
+	return path, nil
 }

@@ -22,6 +22,7 @@ const notice = ref("");
 const errorMessage = ref("");
 const isDark = ref(getPreference("theme") !== "light");
 const projectDialog = ref(false);
+const importConflict = ref(null);
 const editingProject = ref(null);
 const projectForm = ref(emptyProject());
 const authTarget = ref("primary");
@@ -822,14 +823,16 @@ function setAuthType(type) {
   authForm.value.credentials[authTarget.value] = {};
 }
 
-async function deleteProject() {
-  if (!project.value || !window.confirm(`¿Eliminar el proyecto «${project.value.name}»?`)) return;
+async function deleteProject(item = project.value) {
+  if (!item || !window.confirm(`¿Eliminar el proyecto «${item.name}»?\n\nSe eliminarán también sus colecciones, peticiones y credenciales guardadas. Esta acción no se puede deshacer.`)) return;
   try {
-    await backend().DeleteProject(project.value.id);
-    projectDialog.value = false;
-    goHome();
+    await backend().DeleteProject(item.id);
+    if (projectId.value === item.id) {
+      projectDialog.value = false;
+      goHome();
+    }
     await refreshProjects();
-    flash("Proyecto eliminado.");
+    flash(`Proyecto «${item.name}» eliminado.`);
   } catch (error) {
     flash(error.message || String(error), true);
   }
@@ -1160,10 +1163,61 @@ async function importProject(event) {
   try {
     const raw = await readSelectedFile(event);
     if (!raw) return;
-    const imported = await backend().ImportProjectConfig(raw);
-    await refreshProjects();
-    openProject(imported.id);
+    let config;
+    try {
+      config = JSON.parse(raw);
+    } catch {
+      await completeProjectImport(raw);
+      return;
+    }
+    const existing = config && typeof config === "object"
+      ? projects.value.find((item) => item.id && item.id === config.id)
+      : null;
+    if (existing) {
+      importConflict.value = {
+        raw,
+        existing,
+        importedName: typeof config.name === "string" && config.name ? config.name : "Proyecto sin nombre"
+      };
+      return;
+    }
+    await completeProjectImport(raw);
+  } catch (error) {
+    flash(error.message || String(error), true);
+  }
+}
+
+async function completeProjectImport(raw, conflictAction = "") {
+  const imported = conflictAction
+    ? await backend().ImportProjectConfigWithAction(raw, conflictAction)
+    : await backend().ImportProjectConfig(raw);
+  await refreshProjects();
+  openProject(imported.id);
+  if (conflictAction === "replace") {
+    flash(`Proyecto «${imported.name}» reemplazado. Vuelve a configurar la autenticación; las credenciales no se incluyen en la importación.`);
+  } else if (conflictAction === "copy") {
+    flash(`Proyecto importado como «${imported.name}». Las credenciales no se incluyen.`);
+  } else {
     flash(`Proyecto «${imported.name}» importado.`);
+  }
+}
+
+async function resolveImportConflict(action) {
+  const conflict = importConflict.value;
+  importConflict.value = null;
+  if (!conflict || action === "cancel") return;
+  try {
+    await completeProjectImport(conflict.raw, action);
+  } catch (error) {
+    flash(error.message || String(error), true);
+  }
+}
+
+async function exportProject(item) {
+  try {
+    const path = await backend().ExportProject(item.id);
+    if (!path) return;
+    flash(`Proyecto «${item.name}» exportado a ${path}. Incluye destinos, variables, colecciones y peticiones; las credenciales no se incluyen.`);
   } catch (error) {
     flash(error.message || String(error), true);
   }
@@ -1268,25 +1322,43 @@ onMounted(async () => {
         </div>
         <div class="dashboard-actions">
           <button class="button secondary" @click="createDemoProject">▷ Probar ejemplo</button>
-          <button class="button secondary" @click="projectFileInput.click()">＋ Importar proyecto</button>
+          <button class="button secondary project-action-button" @click="projectFileInput.click()">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3m0 0L6.5 6.5M10 3l3.5 3.5M4 11v5h12v-5"/></svg>
+            Importar proyecto
+          </button>
           <button class="button primary" @click="newProject">＋ Nuevo proyecto</button>
           <input ref="projectFileInput" type="file" accept=".json,application/json" hidden @change="importProject">
         </div>
       </div>
       <div v-if="projects.length" class="project-grid">
-        <button v-for="item in projects" :key="item.id" class="project-card" @click="openProject(item.id)">
-          <div class="project-card-top">
-            <span class="project-logo">{{ item.name.slice(0, 1).toUpperCase() }}</span>
-            <span class="card-arrow">↗</span>
+        <article v-for="item in projects" :key="item.id" class="project-card">
+          <button class="project-card-open" @click="openProject(item.id)">
+            <div class="project-card-top">
+              <span class="project-logo">{{ item.name.slice(0, 1).toUpperCase() }}</span>
+              <span class="card-arrow">↗</span>
+            </div>
+            <strong>{{ item.name }}</strong>
+            <span class="card-meta">{{ item.collections.length }} colecciones · {{ item.collections.reduce((n, c) => n + countRequests(c.requests || [], c.folders || []), 0) }} peticiones</span>
+            <div class="target-summary">
+              <span><i class="target-dot stable"></i>{{ item.primary }}</span>
+              <span><i class="target-dot candidate"></i>{{ item.candidate }}</span>
+              <span v-if="item.secondary"><i class="target-dot stable"></i>{{ item.secondary }}</span>
+            </div>
+          </button>
+          <div class="project-card-actions">
+            <button class="button quiet project-action-button" :aria-label="`Exportar proyecto ${item.name}`" @click="exportProject(item)">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 8v9m0 0 3.5-3.5M10 17l-3.5-3.5M4 9V4h12v5"/></svg>
+              Exportar proyecto
+            </button>
+            <button class="button quiet project-card-delete project-action-button" :aria-label="`Eliminar proyecto ${item.name}`" @click="deleteProject(item)">
+              <svg class="project-delete-icon" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M5 6.25h10l-.7 9.1a1 1 0 0 1-1 .9H6.7a1 1 0 0 1-1-.9L5 6.25Z" />
+                <path d="M3.75 4.75h12.5M8 4.75v-1a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1m-4 3.5v5m3-5v5" />
+              </svg>
+              Eliminar
+            </button>
           </div>
-          <strong>{{ item.name }}</strong>
-          <span class="card-meta">{{ item.collections.length }} colecciones · {{ item.collections.reduce((n, c) => n + countRequests(c.requests || [], c.folders || []), 0) }} peticiones</span>
-          <div class="target-summary">
-            <span><i class="target-dot stable"></i>{{ item.primary }}</span>
-            <span><i class="target-dot candidate"></i>{{ item.candidate }}</span>
-            <span v-if="item.secondary"><i class="target-dot stable"></i>{{ item.secondary }}</span>
-          </div>
-        </button>
+        </article>
       </div>
       <div v-else class="empty-state">
         <span class="empty-icon">◇</span>
@@ -1690,6 +1762,25 @@ onMounted(async () => {
         {{ isDark ? "☼" : "☾" }}
       </button>
     </footer>
+
+    <div v-if="importConflict" class="modal-backdrop" @click.self="resolveImportConflict('cancel')">
+      <section class="modal-card import-conflict-modal" role="dialog" aria-modal="true" aria-labelledby="import-conflict-title">
+        <div class="modal-heading">
+          <div><div class="eyebrow">CONFLICTO DE IMPORTACIÓN</div><h2 id="import-conflict-title">El proyecto ya existe</h2></div>
+          <button type="button" class="icon-button" aria-label="Cancelar importación" @click="resolveImportConflict('cancel')">×</button>
+        </div>
+        <p>El archivo «{{ importConflict.importedName }}» tiene el mismo identificador que «{{ importConflict.existing.name }}». Si lo reemplazas, sus colecciones y peticiones se sustituirán por las del archivo.</p>
+        <div class="import-conflict-warning">
+          <strong>Las credenciales no se incluyen en los archivos exportados.</strong>
+          <span>Si reemplazas el proyecto, tendrás que volver a configurar su autenticación.</span>
+        </div>
+        <div class="import-conflict-actions">
+          <button type="button" class="button secondary" @click="resolveImportConflict('cancel')">Cancelar</button>
+          <button type="button" class="button secondary" @click="resolveImportConflict('copy')">Importar como copia</button>
+          <button type="button" class="button project-import-replace" @click="resolveImportConflict('replace')">Reemplazar proyecto</button>
+        </div>
+      </section>
+    </div>
 
     <div v-if="projectDialog" class="modal-backdrop" @click.self="projectDialog = false">
       <form class="modal-card" @submit.prevent="saveProject">

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jrcasanya/difftwin/internal/comparison"
 	"github.com/jrcasanya/difftwin/internal/credentials"
@@ -20,6 +22,19 @@ type App struct {
 	store       *storage.Store
 	client      *http.Client
 	credentials credentials.Store
+	ctx         context.Context
+}
+
+type projectConfigExport struct {
+	ID                   string                       `json:"id"`
+	Name                 string                       `json:"name"`
+	Primary              string                       `json:"primary"`
+	Candidate            string                       `json:"candidate"`
+	Secondary            string                       `json:"secondary"`
+	IgnoredJSONPaths     []string                     `json:"ignored_json_paths,omitempty"`
+	Variables            map[string]string            `json:"variables,omitempty"`
+	DestinationVariables map[string]map[string]string `json:"destination_variables,omitempty"`
+	Collections          []Collection                 `json:"collections,omitempty"`
 }
 
 type ProjectAuthSettings struct {
@@ -38,6 +53,39 @@ func NewApp(projectStore *storage.Store) *App {
 		store: projectStore, client: &http.Client{Timeout: 30 * time.Second},
 		credentials: credentials.KeyringStore{},
 	}
+}
+
+func exportProjectConfig(project Project) projectConfigExport {
+	return projectConfigExport{
+		ID:                   project.ID,
+		Name:                 project.Name,
+		Primary:              project.Primary,
+		Candidate:            project.Candidate,
+		Secondary:            project.Secondary,
+		IgnoredJSONPaths:     project.IgnoredJSONPaths,
+		Variables:            project.Variables,
+		DestinationVariables: project.DestinationVariables,
+		Collections:          project.Collections,
+	}
+}
+
+func projectExportFilename(name string) string {
+	var filename strings.Builder
+	lastDash := false
+	for _, char := range name {
+		if unicode.IsLetter(char) || unicode.IsDigit(char) || char == '_' || char == '-' {
+			filename.WriteRune(char)
+			lastDash = false
+		} else if !lastDash {
+			filename.WriteByte('-')
+			lastDash = true
+		}
+	}
+	name = strings.Trim(filename.String(), "-")
+	if name == "" {
+		name = "proyecto"
+	}
+	return name + ".json"
 }
 
 func (a *App) GetProjects() []Project {
@@ -325,6 +373,17 @@ func (a *App) DeleteCollection(projectID, collectionID string) error {
 }
 
 func (a *App) ImportProjectConfig(raw string) (Project, error) {
+	return a.importProjectConfig(raw, "")
+}
+
+func (a *App) ImportProjectConfigWithAction(raw, conflictAction string) (Project, error) {
+	if conflictAction != "replace" && conflictAction != "copy" {
+		return Project{}, fmt.Errorf("acción de conflicto de proyecto no válida")
+	}
+	return a.importProjectConfig(raw, conflictAction)
+}
+
+func (a *App) importProjectConfig(raw, conflictAction string) (Project, error) {
 	if len(raw) > maxBodySize {
 		return Project{}, fmt.Errorf("el archivo de proyecto supera el límite de %d MiB", maxBodySize>>20)
 	}
@@ -336,10 +395,80 @@ func (a *App) ImportProjectConfig(raw string) (Project, error) {
 	if project.ID == "" {
 		project.ID = domain.NewID()
 	}
+	if err := domain.PrepareProject(&project); err != nil {
+		return Project{}, err
+	}
+
+	projects := a.store.Snapshot()
+	existing := domain.FindProject(projects, project.ID)
+	if existing != nil {
+		switch conflictAction {
+		case "replace":
+			if err := a.replaceImportedProject(project, *existing); err != nil {
+				return Project{}, err
+			}
+			return project, nil
+		case "copy":
+			project.ID = domain.NewID()
+			project.Name = uniqueProjectCopyName(project.Name, projects)
+		default:
+			return Project{}, fmt.Errorf("ya existe un proyecto con el mismo identificador; elige reemplazarlo o importarlo como copia")
+		}
+	} else if conflictAction == "replace" {
+		return Project{}, fmt.Errorf("el proyecto que se iba a reemplazar ya no existe")
+	}
+
 	if err := a.store.ImportProject(project); err != nil {
 		return Project{}, err
 	}
 	return project, nil
+}
+
+func uniqueProjectCopyName(name string, projects []Project) string {
+	existingNames := make(map[string]struct{}, len(projects))
+	for _, project := range projects {
+		existingNames[strings.ToLower(project.Name)] = struct{}{}
+	}
+	copyName := name + " (copia)"
+	for suffix := 2; ; suffix++ {
+		if _, exists := existingNames[strings.ToLower(copyName)]; !exists {
+			return copyName
+		}
+		copyName = fmt.Sprintf("%s (copia %d)", name, suffix)
+	}
+}
+
+func (a *App) replaceImportedProject(project, existing Project) error {
+	var previousCredentials string
+	hadCredentials := false
+	if hasConfiguredAuth(existing.Auth) {
+		raw, err := a.credentials.Get(existing.ID)
+		if err != nil && !credentials.IsNotFound(err) {
+			return err
+		}
+		if err == nil {
+			previousCredentials, hadCredentials = raw, true
+			if err := a.credentials.Delete(existing.ID); err != nil {
+				return err
+			}
+		}
+	}
+
+	err := a.store.Update(func(projects *[]Project) error {
+		for i := range *projects {
+			if (*projects)[i].ID == existing.ID {
+				(*projects)[i] = project
+				return nil
+			}
+		}
+		return os.ErrNotExist
+	})
+	if err != nil && hadCredentials {
+		if restoreErr := a.credentials.Set(existing.ID, previousCredentials); restoreErr != nil {
+			return fmt.Errorf("%w (also failed to restore previous credentials: %v)", err, restoreErr)
+		}
+	}
+	return err
 }
 
 func (a *App) ImportPostmanCollection(projectID, raw string) (PostmanImportResult, error) {

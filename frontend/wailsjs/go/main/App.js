@@ -14,6 +14,10 @@ export function DeleteProject(arg1) {
   return window['go']['main']['App']['DeleteProject'](arg1);
 }
 
+export function ExportProject(arg1) {
+  return window['go']['main']['App']['ExportProject'](arg1);
+}
+
 export function GetProjectAuth(arg1) {
   return window['go']['main']['App']['GetProjectAuth'](arg1);
 }
@@ -28,6 +32,10 @@ export function ImportPostmanCollection(arg1, arg2) {
 
 export function ImportProjectConfig(arg1) {
   return window['go']['main']['App']['ImportProjectConfig'](arg1);
+}
+
+export function ImportProjectConfigWithAction(arg1, arg2) {
+  return window['go']['main']['App']['ImportProjectConfigWithAction'](arg1, arg2);
 }
 
 export function MoveCollectionItem(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {

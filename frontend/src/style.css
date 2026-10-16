@@ -90,9 +90,14 @@ h1 { margin: 9px 0 6px; font-size: 27px; letter-spacing: -.8px; }
 .dashboard-heading p, .empty-state p, .content-empty p { color: var(--muted); margin: 0; }
 .dashboard-heading p.demo-caption { margin-top: 5px; color: var(--faint); font-size: 10px; }
 .dashboard-actions { display: flex; gap: 8px; }
+.project-action-button svg { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; }
 .project-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(275px,1fr)); gap: 15px; }
-.project-card { min-width: 0; padding: 18px; text-align: left; color: var(--text); border: 1px solid var(--line); background: var(--surface); border-radius: 10px; cursor: pointer; transition: border .18s ease, transform .18s ease, box-shadow .18s ease; }
-.project-card:hover { border-color: #667ed1; transform: translateY(-2px); box-shadow: 0 12px 28px #00000018; }
+.project-card { min-width: 0; padding: 18px; color: var(--text); border: 1px solid var(--line); background: var(--surface); border-radius: 10px; transition: border .18s ease, transform .18s ease, box-shadow .18s ease; }
+.project-card:hover, .project-card:focus-within { border-color: #667ed1; transform: translateY(-2px); box-shadow: 0 12px 28px #00000018; }
+.project-card-open { display: block; width: 100%; padding: 0; text-align: left; color: var(--text); border: 0; background: transparent; cursor: pointer; }
+.project-card-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; }
+.project-card-delete { color: var(--red); }
+.project-delete-icon { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.4; }
 .project-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .project-logo { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; background: #708cf126; color: var(--accent); font-size: 16px; font-weight: 700; }
 .card-arrow { color: var(--faint); font-size: 17px; }
@@ -293,6 +298,7 @@ h1 { margin: 9px 0 6px; font-size: 27px; letter-spacing: -.8px; }
 .statusbar > span:first-child { display: flex; align-items: center; gap: 7px; }
 .online-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 .toast { position: fixed; z-index: 20; top: 70px; right: 20px; max-width: min(520px,60vw); display: flex; gap: 18px; align-items: center; padding: 10px 13px; border: 1px solid #45a7774d; border-radius: 7px; background: var(--surface-raised); color: var(--green); box-shadow: 0 8px 24px #0003; }
+.toast span { overflow-wrap: anywhere; }
 .toast.error { border-color: #ea6b704d; color: var(--red); }
 .toast button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 16px; }
 .modal-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; background: #07090dbb; backdrop-filter: blur(4px); }
@@ -307,6 +313,12 @@ h1 { margin: 9px 0 6px; font-size: 27px; letter-spacing: -.8px; }
 .danger-zone p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
 .danger-zone .danger-outline { flex: 0 0 auto; color: var(--red); border-color: #ea6b704d; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+.import-conflict-modal > p { margin: 0; color: var(--muted); line-height: 1.6; }
+.import-conflict-warning { display: grid; gap: 4px; padding: 11px 12px; border: 1px solid #d99a3b55; border-radius: 7px; background: #d99a3b0c; color: var(--amber); font-size: 11px; }
+.import-conflict-warning span { color: var(--muted); }
+.import-conflict-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+.project-import-replace { color: var(--red); border-color: #ea6b704d; background: transparent; }
+.project-import-replace:hover { border-color: var(--red); background: #ea6b7012; }
 .spinner { width: 12px; height: 12px; border: 2px solid #ffffff66; border-top-color: white; border-radius: 50%; animation: spin .65s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 1100px) {
