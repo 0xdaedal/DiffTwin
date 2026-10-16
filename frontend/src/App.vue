@@ -735,16 +735,20 @@ function toggleCollection(item) {
   selectCollection(item);
 }
 
-function selectFolder(id) {
+function selectFolder(targetCollectionID, id) {
+  collectionId.value = targetCollectionID;
   folderId.value = id;
   requestId.value = "";
   response.value = null;
+  expandedCollections.value.add(targetCollectionID);
 }
 
-function selectRequest(id, parentFolderId = "") {
+function selectRequest(targetCollectionID, id, parentFolderId = "") {
+  collectionId.value = targetCollectionID;
   requestId.value = id;
   folderId.value = parentFolderId;
   response.value = null;
+  expandedCollections.value.add(targetCollectionID);
   closeMenus();
   activeEditorTab.value = "params";
   syncQueryParams();
@@ -1222,7 +1226,7 @@ function showCollectionRunResult(item) {
     return;
   }
   selectCollection(runCollection);
-  selectRequest(item.request.id, item.folderId);
+  selectRequest(run.collectionId, item.request.id, item.folderId);
   response.value = item.result;
 }
 
@@ -1311,7 +1315,7 @@ async function createDemoProject() {
     if (sampleCollection) {
       selectCollection(sampleCollection);
       const sampleRequest = sampleCollection.requests?.[0];
-      if (sampleRequest) selectRequest(sampleRequest.id);
+      if (sampleRequest) selectRequest(sampleCollection.id, sampleRequest.id);
     }
     flash(t("Proyecto de ejemplo listo. Pulsa Enviar para ver las diferencias."));
   } catch (error) {
@@ -1545,8 +1549,8 @@ onMounted(async () => {
                   tabindex="0"
                   :title="t('Arrastra la petición a una carpeta o colección para moverla')"
                   draggable="true"
-                  @click="selectRequest(request.id)"
-                  @keydown.enter="selectRequest(request.id)"
+                  @click="selectRequest(item.id, request.id)"
+                  @keydown.enter="selectRequest(item.id, request.id)"
                   @dragstart.stop="startTreeDrag($event, { type: 'request', id: request.id, collectionId: item.id, parentId: '' })"
                   @dragend="endTreeDrag"
                 >
@@ -1575,8 +1579,8 @@ onMounted(async () => {
                 :search-term="collectionItemSearch(item)"
                 :dragged-item="draggedTreeItem"
                 :drop-target="treeDropTarget"
-                @select-folder="selectFolder"
-                @select-request="selectRequest"
+                @select-folder="(id) => selectFolder(item.id, id)"
+                @select-request="(id, parentFolderId) => selectRequest(item.id, id, parentFolderId)"
                 @toggle-menu="toggleMenu"
                 @close-menus="closeMenus"
                 @duplicate-request="duplicateRequest"
