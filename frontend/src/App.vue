@@ -21,6 +21,8 @@ const activeEditorTab = ref("params");
 const queryParams = ref([]);
 const notice = ref("");
 const errorMessage = ref("");
+const appDialog = ref(null);
+const appDialogInput = ref(null);
 const isDark = ref(getPreference("theme") !== "light");
 const storedLocale = getPreference("language");
 const locale = ref(storedLocale === "en" || storedLocale === "es" ? storedLocale : detectLocale());
@@ -53,6 +55,7 @@ const movingTreeItem = ref(false);
 const collectionSearchOpen = ref(false);
 const collectionSearch = ref("");
 const collectionSearchInput = ref(null);
+let appDialogResolve = null;
 
 function getPreference(name) {
   const key = `difftwin-${name}`;
@@ -646,6 +649,36 @@ function flash(message, bad = false) {
   }, 4500);
 }
 
+function showAppDialog(dialog) {
+  return new Promise((resolve) => {
+    appDialogResolve = resolve;
+    appDialog.value = dialog;
+    if (dialog.type === "prompt") {
+      nextTick(() => appDialogInput.value?.focus());
+    }
+  });
+}
+
+function closeAppDialog(result = null) {
+  if (!appDialog.value) return;
+  const resolve = appDialogResolve;
+  appDialogResolve = null;
+  appDialog.value = null;
+  resolve?.(result);
+}
+
+function confirmAction(message) {
+  return showAppDialog({ type: "confirm", title: t("Confirmar acción"), message });
+}
+
+function promptForName(title) {
+  return showAppDialog({ type: "prompt", title, value: "" });
+}
+
+function showImportWarnings(message) {
+  return showAppDialog({ type: "message", title: t("Limitaciones de importación"), message });
+}
+
 async function refreshProjects() {
   projects.value = await backend().GetProjects();
   if (projectId.value && !projects.value.some((item) => item.id === projectId.value)) {
@@ -851,7 +884,7 @@ function setAuthType(type) {
 }
 
 async function deleteProject(item = project.value) {
-  if (!item || !window.confirm(t("¿Eliminar el proyecto «{name}»?\n\nSe eliminarán también sus colecciones, peticiones y credenciales guardadas. Esta acción no se puede deshacer.", { name: item.name }))) return;
+  if (!item || !(await confirmAction(t("¿Eliminar el proyecto «{name}»?\n\nSe eliminarán también sus colecciones, peticiones y credenciales guardadas. Esta acción no se puede deshacer.", { name: item.name })))) return;
   try {
     await backend().DeleteProject(item.id);
     if (projectId.value === item.id) {
@@ -873,7 +906,7 @@ async function persistCollection() {
 }
 
 async function createCollection() {
-  const name = window.prompt(t("Nombre de la colección"));
+  const name = await promptForName(t("Nombre de la colección"));
   if (!name?.trim()) return;
   try {
     const saved = await backend().SaveCollection(project.value.id, {
@@ -926,7 +959,7 @@ async function saveCollectionRename(item) {
 }
 
 async function deleteCollection() {
-  if (!window.confirm(t("¿Eliminar «{name}» y todo su contenido?", { name: collection.value.name }))) return;
+  if (!(await confirmAction(t("¿Eliminar «{name}» y todo su contenido?", { name: collection.value.name })))) return;
   try {
     await backend().DeleteCollection(project.value.id, collection.value.id);
     collectionId.value = "";
@@ -944,7 +977,7 @@ async function createFolder(parentId = "") {
     flash(t("Selecciona una colección antes de crear una carpeta."), true);
     return;
   }
-  const name = window.prompt(t(parentId ? "Nombre de la subcarpeta" : "Nombre de la carpeta"));
+  const name = await promptForName(t(parentId ? "Nombre de la subcarpeta" : "Nombre de la carpeta"));
   if (!name?.trim()) return;
   const folder = { id: crypto.randomUUID().replaceAll("-", ""), name: name.trim(), requests: [], folders: [] };
   collection.value.folders ||= [];
@@ -1020,9 +1053,9 @@ async function renameFolder(collectionID, id, rawName) {
   }
 }
 
-function deleteFolder(id) {
+async function deleteFolder(id) {
   const target = findFolder(collection.value.folders || [], id);
-  if (!window.confirm(t("¿Eliminar «{name}» y todo su contenido?", { name: target?.name || "" }))) return;
+  if (!target || !(await confirmAction(t("¿Eliminar «{name}» y todo su contenido?", { name: target.name })))) return;
   updateFolder(collection.value.folders, id, (siblings, index) => siblings.splice(index, 1));
   if (folderId.value === id || !findFolder(collection.value.folders, folderId.value)) {
     folderId.value = "";
@@ -1098,7 +1131,7 @@ async function duplicateRequest(request, parentId = "") {
 
 async function deleteRequestByID(id, parentId = "") {
   const request = findRequest(collection.value, id);
-  if (!request || !window.confirm(t("¿Eliminar la petición «{name}»?", { name: request.name }))) return;
+  if (!request || !(await confirmAction(t("¿Eliminar la petición «{name}»?", { name: request.name })))) return;
   if (parentId) {
     const parent = findFolder(collection.value?.folders || [], parentId);
     if (!parent) {
@@ -1331,7 +1364,7 @@ async function importPostman(event) {
     await refreshProjects();
     selectCollection(imported.collection);
     if (imported.warnings?.length) {
-      window.alert(t("Colección importada con estas limitaciones:\n\n• {warnings}", { warnings: imported.warnings.join("\n• ") }));
+      await showImportWarnings(t("Colección importada con estas limitaciones:\n\n• {warnings}", { warnings: imported.warnings.join("\n• ") }));
     }
     flash(t("Colección «{name}» importada.", { name: imported.collection.name }));
   } catch (error) {
@@ -1914,6 +1947,39 @@ onMounted(async () => {
         </div>
         <div class="modal-actions"><button type="button" class="button secondary" @click="projectDialog = false">{{ t("Cancelar") }}</button><button class="button primary">{{ t(editingProject ? "Guardar cambios" : "Crear proyecto") }}</button></div>
       </form>
+    </div>
+
+    <div v-if="appDialog" class="modal-backdrop app-dialog-backdrop" @click.self="closeAppDialog()">
+      <section
+        class="modal-card app-dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-labelledby="'app-dialog-title'"
+        @keydown.esc.stop.prevent="closeAppDialog()"
+      >
+        <div class="modal-heading">
+          <div><div class="eyebrow">{{ t(appDialog.type === "confirm" ? "CONFIRMAR ACCIÓN" : appDialog.type === "prompt" ? "NUEVO ELEMENTO" : "IMPORTACIÓN") }}</div><h2 id="app-dialog-title">{{ appDialog.title }}</h2></div>
+          <button type="button" class="icon-button" :aria-label="t('Cerrar')" @click="closeAppDialog()">×</button>
+        </div>
+        <p v-if="appDialog.message" class="app-dialog-message">{{ appDialog.message }}</p>
+        <input
+          v-if="appDialog.type === 'prompt'"
+          ref="appDialogInput"
+          v-model="appDialog.value"
+          class="app-dialog-input"
+          :aria-label="appDialog.title"
+          @keydown.enter.prevent="closeAppDialog(appDialog.value)"
+        >
+        <div class="modal-actions">
+          <button v-if="appDialog.type !== 'message'" type="button" class="button secondary" @click="closeAppDialog()">{{ t("Cancelar") }}</button>
+          <button
+            type="button"
+            class="button"
+            :class="appDialog.type === 'confirm' ? 'danger-outline' : 'primary'"
+            @click="closeAppDialog(appDialog.type === 'prompt' ? appDialog.value : appDialog.type === 'confirm')"
+          >{{ t(appDialog.type === "confirm" ? "Eliminar" : appDialog.type === "prompt" ? "Aceptar" : "Cerrar") }}</button>
+        </div>
+      </section>
     </div>
   </div>
 </template>

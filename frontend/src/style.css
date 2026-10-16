@@ -309,6 +309,13 @@ h1 { margin: 9px 0 6px; font-size: 27px; letter-spacing: -.8px; }
 .toast button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 16px; }
 .modal-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; background: #07090dbb; backdrop-filter: blur(4px); }
 .modal-card { width: min(510px,100%); max-height: 90vh; display: grid; gap: 14px; overflow: auto; padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 24px 80px #0007; }
+.app-dialog-backdrop { z-index: 40; }
+.app-dialog { width: min(440px,100%); }
+.app-dialog-message { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.app-dialog-input { width: 100%; min-height: 38px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px; outline: 0; background: var(--surface-raised); color: var(--text); font: 12px "DM Sans",sans-serif; }
+.app-dialog-input:focus { border-color: var(--accent); }
+.app-dialog .danger-outline { color: var(--red); border-color: #ea6b704d; background: transparent; }
+.app-dialog .danger-outline:hover { border-color: var(--red); background: #ea6b7012; }
 .modal-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px; }
 .modal-heading h2 { margin: 5px 0 0; font-size: 20px; }
 .modal-card .field-label textarea { min-height: 82px; }

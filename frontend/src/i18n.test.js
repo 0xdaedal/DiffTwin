@@ -33,3 +33,9 @@ test("rename keyboard guidance is localized", () => {
     "Pulsa Enter para guardar o Escape para cancelar."
   );
 });
+
+test("custom dialogs use localized labels", () => {
+  assert.equal(translate("en", "Confirmar acción"), "Confirm action");
+  assert.equal(translate("en", "Limitaciones de importación"), "Import limitations");
+  assert.equal(translate("en", "Aceptar"), "OK");
+});
