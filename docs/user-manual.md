@@ -2,7 +2,7 @@
 
 DiffTwin is a desktop application for comparing HTTP API responses between a stable environment and a candidate environment. An optional second stable environment helps identify differences that already exist between stable instances.
 
-The current app interface is in Spanish. Where a control is mentioned below, its Spanish label is included in parentheses when useful.
+DiffTwin's interface is available in Spanish and English. It follows the operating system language on first launch (English when the system language is English; otherwise Spanish). Use the language selector in the bottom-right corner, next to the theme control, to change it; your choice is remembered on this computer. Where a control is mentioned below, its Spanish label is included in parentheses when useful.
 
 ## 1. Install and open DiffTwin
 

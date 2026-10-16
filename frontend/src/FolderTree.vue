@@ -1,8 +1,10 @@
 <script setup>
 import { computed, ref, watch } from "vue";
+import { translate } from "./i18n";
 
 const props = defineProps({
   folder: { type: Object, required: true },
+  locale: { type: String, required: true },
   selectedFolderId: { type: String, default: "" },
   selectedRequestId: { type: String, default: "" },
   activeMenu: { type: String, default: "" },
@@ -15,6 +17,7 @@ const props = defineProps({
 });
 const emit = defineEmits(["select-folder", "select-request", "toggle-menu", "close-menus", "duplicate-request", "delete-request", "create-folder", "create-request", "rename-folder", "delete-folder", "drag-start", "drag-end", "drag-over", "drop-on-folder"]);
 const open = ref(true);
+const t = (source) => translate(props.locale, source);
 const selected = computed(() => props.selectedCollectionId === props.collectionId && props.selectedFolderId === props.folder.id);
 const folderMenuKey = computed(() => `folder:${props.folder.id}`);
 const menuOpen = computed(() => props.activeMenu === folderMenuKey.value);
@@ -48,14 +51,14 @@ watch(
     <div
       class="tree-row"
       :class="{ selected, 'menu-open': menuOpen, 'drop-target': dropTarget === folderDropTarget }"
-      title="Arrastra la carpeta a otra carpeta o colección para moverla"
+      :title="t('Arrastra la carpeta a otra carpeta o colección para moverla')"
       draggable="true"
       @dragstart.stop="emit('drag-start', $event, { type: 'folder', id: folder.id, collectionId, parentId: parentFolderId })"
       @dragend="emit('drag-end')"
       @dragover.stop="emit('drag-over', $event, collectionId, folder.id)"
       @drop.prevent.stop="emit('drop-on-folder', $event, collectionId, folder.id)"
     >
-      <button class="tree-toggle" @click="open = !open" :aria-label="isExpanded ? 'Contraer carpeta' : 'Expandir carpeta'" :aria-expanded="isExpanded">
+      <button class="tree-toggle" @click="open = !open" :aria-label="t(isExpanded ? 'Contraer carpeta' : 'Expandir carpeta')" :aria-expanded="isExpanded">
         <svg class="tree-chevron" :class="{ expanded: isExpanded }" viewBox="0 0 16 16" aria-hidden="true">
           <path d="m5.5 6.5 2.5 2.5 2.5-2.5" />
         </svg>
@@ -64,14 +67,14 @@ watch(
         <span class="folder-icon">▰</span><span class="tree-name">{{ folder.name }}</span>
       </button>
       <div class="tree-actions">
-        <button class="icon-button tiny" title="Opciones de carpeta" :aria-expanded="menuOpen" @click.stop="emit('toggle-menu', 'folder', folder.id)">···</button>
+        <button class="icon-button tiny" :title="t('Opciones de carpeta')" :aria-expanded="menuOpen" @click.stop="emit('toggle-menu', 'folder', folder.id)">···</button>
       </div>
       <div v-if="menuOpen" class="collection-menu folder-menu" @click.stop>
-        <button @click="emit('close-menus'); emit('create-request', folder.id)">＋ Nueva petición</button>
-        <button @click="emit('close-menus'); emit('create-folder', folder.id)">＋ Nueva subcarpeta</button>
+        <button @click="emit('close-menus'); emit('create-request', folder.id)">＋ {{ t("Nueva petición") }}</button>
+        <button @click="emit('close-menus'); emit('create-folder', folder.id)">＋ {{ t("Nueva subcarpeta") }}</button>
         <div class="collection-menu-separator"></div>
-        <button @click="emit('close-menus'); emit('rename-folder', folder.id)">Renombrar carpeta</button>
-        <button class="collection-menu-danger" @click="emit('close-menus'); emit('delete-folder', folder.id)">Eliminar carpeta</button>
+        <button @click="emit('close-menus'); emit('rename-folder', folder.id)">{{ t("Renombrar carpeta") }}</button>
+        <button class="collection-menu-danger" @click="emit('close-menus'); emit('delete-folder', folder.id)">{{ t("Eliminar carpeta") }}</button>
       </div>
     </div>
     <div v-if="isExpanded" class="tree-children">
@@ -82,7 +85,7 @@ watch(
         :class="{ selected: selectedCollectionId === collectionId && selectedRequestId === request.id, 'menu-open': activeMenu === requestMenuKey(request.id) }"
         role="button"
         tabindex="0"
-        title="Arrastra la petición a una carpeta o colección para moverla"
+        :title="t('Arrastra la petición a una carpeta o colección para moverla')"
         draggable="true"
         @click="emit('select-request', request.id, folder.id)"
         @keydown.enter="emit('select-request', request.id, folder.id)"
@@ -93,17 +96,18 @@ watch(
         <span class="method-badge" :class="`method-${request.method.toLowerCase()}`">{{ request.method }}</span>
         <span class="tree-name">{{ request.name }}</span>
         <span class="tree-actions">
-          <button class="icon-button tiny" title="Opciones de petición" :aria-expanded="activeMenu === requestMenuKey(request.id)" @click.stop="emit('toggle-menu', 'request', request.id)">···</button>
+          <button class="icon-button tiny" :title="t('Opciones de petición')" :aria-expanded="activeMenu === requestMenuKey(request.id)" @click.stop="emit('toggle-menu', 'request', request.id)">···</button>
         </span>
         <div v-if="activeMenu === requestMenuKey(request.id)" class="collection-menu request-menu" @click.stop>
-          <button @click="emit('close-menus'); emit('duplicate-request', request, folder.id)">Duplicar petición</button>
-          <button class="collection-menu-danger" @click="emit('close-menus'); emit('delete-request', request.id, folder.id)">Eliminar petición</button>
+          <button @click="emit('close-menus'); emit('duplicate-request', request, folder.id)">{{ t("Duplicar petición") }}</button>
+          <button class="collection-menu-danger" @click="emit('close-menus'); emit('delete-request', request.id, folder.id)">{{ t("Eliminar petición") }}</button>
         </div>
       </div>
       <FolderTree
         v-for="child in visibleFolders"
         :key="child.id"
         :folder="child"
+        :locale="locale"
         :collection-id="collectionId"
         :selected-collection-id="selectedCollectionId"
         :parent-folder-id="folder.id"

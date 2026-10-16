@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import * as AppBindings from "../wailsjs/go/main/App";
 import FolderTree from "./FolderTree.vue";
+import { detectLocale, translate } from "./i18n";
 
 const backend = () => AppBindings;
 const projects = ref([]);
@@ -21,6 +22,9 @@ const queryParams = ref([]);
 const notice = ref("");
 const errorMessage = ref("");
 const isDark = ref(getPreference("theme") !== "light");
+const storedLocale = getPreference("language");
+const locale = ref(storedLocale === "en" || storedLocale === "es" ? storedLocale : detectLocale());
+const t = (source, values) => translate(locale.value, source, values);
 const projectDialog = ref(false);
 const importConflict = ref(null);
 const editingProject = ref(null);
@@ -135,15 +139,15 @@ const collection = computed(() => project.value?.collections?.find((item) => ite
 const selectedFolder = computed(() => findFolder(collection.value?.folders || [], folderId.value));
 const selectedRequest = computed(() => findRequest(collection.value, requestId.value));
 const visibleCollections = computed(() => (project.value?.collections || []).filter((item) => collectionMatches(item, collectionSearch.value)));
-const projectLabel = computed(() => project.value?.name || "Selecciona un proyecto");
+const projectLabel = computed(() => project.value?.name || t("Selecciona un proyecto"));
 const visibleCollectionRun = computed(() =>
   collectionRun.value?.collectionId === collection.value?.id ? collectionRun.value : null
 );
 const latencySummaries = computed(() => {
   if (!response.value) return [];
   const primaryDuration = response.value.primary.duration_ms;
-  const destinations = [["Candidata", response.value.candidate]];
-  if (response.value.secondary_enabled) destinations.push(["Estable secundaria", response.value.secondary]);
+  const destinations = [[t("Candidata"), response.value.candidate]];
+  if (response.value.secondary_enabled) destinations.push([t("Estable secundaria"), response.value.secondary]);
   return destinations.map(([name, result]) => ({
     name,
     duration: result.duration_ms,
@@ -166,19 +170,19 @@ const comparisonSummary = computed(() => {
   if (response.value.secondary_enabled) results.push(response.value.secondary);
   const failed = results
     .some((item) => item.error);
-  if (failed) return { tone: "error", icon: "!", title: "Error al consultar", detail: "Una o más respuestas no pudieron completarse." };
+  if (failed) return { tone: "error", icon: "!", title: t("Error al consultar"), detail: t("Una o más respuestas no pudieron completarse.") };
   if (response.value.candidate_differs) {
-    return { tone: "different", icon: "≠", title: "Hay diferencias", detail: "La candidata no coincide con la estable principal." };
+    return { tone: "different", icon: "≠", title: t("Hay diferencias"), detail: t("La candidata no coincide con la estable principal.") };
   }
-  return { tone: "same", icon: "✓", title: "Las respuestas coinciden", detail: "La candidata coincide con la estable principal." };
+  return { tone: "same", icon: "✓", title: t("Las respuestas coinciden"), detail: t("La candidata coincide con la estable principal.") };
 });
 const responseCards = computed(() => {
   if (!response.value) return [];
   const cards = [
-    ["Estable principal", response.value.primary],
-    ["Candidata", response.value.candidate]
+    [t("Estable principal"), response.value.primary],
+    [t("Candidata"), response.value.candidate]
   ];
-  if (response.value.secondary_enabled) cards.push(["Estable secundaria", response.value.secondary]);
+  if (response.value.secondary_enabled) cards.push([t("Estable secundaria"), response.value.secondary]);
   return cards;
 });
 function getResponseDiffs(primary, compared) {
@@ -188,10 +192,10 @@ function getResponseDiffs(primary, compared) {
   };
 
   if (primary.status_code !== compared.status_code) {
-    addDiff("HTTP status", primary.status_code || "(sin respuesta)", compared.status_code || "(sin respuesta)");
+    addDiff("HTTP status", primary.status_code || t("(sin respuesta)"), compared.status_code || t("(sin respuesta)"));
   }
   if (primary.error !== compared.error) {
-    addDiff("Error de transporte", primary.error || "(sin error)", compared.error || "(sin error)");
+    addDiff(t("Error de transporte"), primary.error || t("(sin error)"), compared.error || t("(sin error)"));
   }
 
   const ignoredHeaders = new Set([
@@ -264,8 +268,8 @@ function getResponseDiffs(primary, compared) {
         }
         if (Array.isArray(left) && Array.isArray(right)) {
           for (let index = 0; index < Math.max(left.length, right.length) && diffs.length < 101; index += 1) {
-            if (index >= left.length) addDiff(`${path}[${index}]`, "(no existe)", formatValue(right[index]), "added");
-            else if (index >= right.length) addDiff(`${path}[${index}]`, formatValue(left[index]), "(no existe)", "removed");
+            if (index >= left.length) addDiff(`${path}[${index}]`, t("(no existe)"), formatValue(right[index]), "added");
+            else if (index >= right.length) addDiff(`${path}[${index}]`, formatValue(left[index]), t("(no existe)"), "removed");
             else compare(left[index], right[index], `${path}[${index}]`, depth + 1, [...segments, { index }]);
           }
           return;
@@ -276,8 +280,8 @@ function getResponseDiffs(primary, compared) {
           const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
           for (const key of [...keys].sort()) {
             const childPath = formatPath(path, key);
-            if (!Object.hasOwn(left, key)) addDiff(childPath, "(no existe)", formatValue(right[key]), "added");
-            else if (!Object.hasOwn(right, key)) addDiff(childPath, formatValue(left[key]), "(no existe)", "removed");
+            if (!Object.hasOwn(left, key)) addDiff(childPath, t("(no existe)"), formatValue(right[key]), "added");
+            else if (!Object.hasOwn(right, key)) addDiff(childPath, formatValue(left[key]), t("(no existe)"), "removed");
             else compare(left[key], right[key], childPath, depth + 1, [...segments, { key }]);
             if (diffs.length >= 101) break;
           }
@@ -287,7 +291,7 @@ function getResponseDiffs(primary, compared) {
       };
       if (leftBody !== removed || rightBody !== removed) compare(leftBody, rightBody);
     } else {
-      addDiff("Cuerpo (texto)", primary.body || "(vacío)", compared.body || "(vacío)");
+      addDiff(t("Cuerpo (texto)"), primary.body || t("(vacío)"), compared.body || t("(vacío)"));
     }
   }
 
@@ -359,18 +363,18 @@ const comparisonPanels = computed(() => {
   if (response.value.candidate_differs) {
     panels.push({
       id: "candidate",
-      title: "Candidata frente a estable principal",
-      leftLabel: "Estable principal",
-      rightLabel: "Candidata",
+      title: t("Candidata frente a estable principal"),
+      leftLabel: t("Estable principal"),
+      rightLabel: t("Candidata"),
       diffs: getResponseDiffs(response.value.primary, response.value.candidate)
     });
   }
   if (response.value.secondary_enabled && response.value.noise_detected) {
     panels.push({
       id: "stable",
-      title: "Variación entre instancias estables",
-      leftLabel: "Estable principal",
-      rightLabel: "Estable secundaria",
+      title: t("Variación entre instancias estables"),
+      leftLabel: t("Estable principal"),
+      rightLabel: t("Estable secundaria"),
       diffs: getResponseDiffs(response.value.primary, response.value.secondary)
     });
   }
@@ -470,6 +474,14 @@ function findRequest(item, id) {
 function countRequests(requests, folders) {
   return requests.length + folders.reduce((sum, folder) =>
     sum + countRequests(folder.requests || [], folder.folders || []), 0);
+}
+
+function projectSummary(item) {
+  const requestCount = item.collections.reduce((sum, entry) =>
+    sum + countRequests(entry.requests || [], entry.folders || []), 0);
+  const collectionLabel = item.collections.length === 1 ? "{count} colección" : "{count} colecciones";
+  const requestLabel = requestCount === 1 ? "{count} petición" : "{count} peticiones";
+  return `${t(collectionLabel, { count: item.collections.length })} · ${t(requestLabel, { count: requestCount })}`;
 }
 
 function collectCollectionRequests(item) {
@@ -612,7 +624,7 @@ async function dropTreeItem(targetCollectionID, targetFolderID = "") {
       folderId.value = item.type === "folder" ? item.id : targetFolderID;
       requestId.value = item.type === "request" ? item.id : "";
       response.value = null;
-      flash(item.type === "folder" ? "Carpeta movida." : "Petición movida.");
+      flash(t(item.type === "folder" ? "Carpeta movida." : "Petición movida."));
     }
   } catch (error) {
     flash(error.message || String(error), true);
@@ -649,6 +661,12 @@ function setTheme(dark) {
 
 function toggleTheme() {
   setTheme(!isDark.value);
+}
+
+function setLocale(value) {
+  locale.value = value === "en" ? "en" : "es";
+  setPreference("language", locale.value);
+  document.documentElement.lang = locale.value;
 }
 
 function openProject(id) {
@@ -763,7 +781,7 @@ async function saveProject() {
     await refreshProjects();
     await loadProjectAuth(saved.id);
     projectDialog.value = false;
-    flash(editingProject.value ? "Proyecto actualizado." : "Proyecto creado.");
+    flash(t(editingProject.value ? "Proyecto actualizado." : "Proyecto creado."));
   } catch (error) {
     flash(error.message || String(error), true);
   }
@@ -778,7 +796,9 @@ async function saveProjectAuth() {
       const parsed = JSON.parse(destinationVariableDrafts.value[target] || "{}");
       if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object" ||
           Object.values(parsed).some((value) => typeof value !== "string")) {
-        throw new Error(`Las variables de ${destinationLabel(target)} deben ser un objeto JSON con valores de texto.`);
+        throw new Error(t("Las variables de {destination} deben ser un objeto JSON con valores de texto.", {
+          destination: destinationLabel(target)
+        }));
       }
       destinationVariables[target] = parsed;
     }
@@ -793,7 +813,7 @@ async function saveProjectAuth() {
     authLoadedProjectId.value = saved.id;
     authCredentialsMissing.value = false;
     response.value = null;
-    flash("Opciones guardadas.");
+    flash(t("Opciones guardadas."));
   } catch (error) {
     flash(error.message || String(error), true);
   } finally {
@@ -807,9 +827,9 @@ function setAuthTarget(target) {
 
 function destinationLabel(target) {
   return {
-    primary: "la estable principal",
-    candidate: "la candidata",
-    secondary: "la estable secundaria"
+    primary: t("la estable principal"),
+    candidate: t("la candidata"),
+    secondary: t("la estable secundaria")
   }[target];
 }
 
@@ -824,7 +844,7 @@ function setAuthType(type) {
 }
 
 async function deleteProject(item = project.value) {
-  if (!item || !window.confirm(`¿Eliminar el proyecto «${item.name}»?\n\nSe eliminarán también sus colecciones, peticiones y credenciales guardadas. Esta acción no se puede deshacer.`)) return;
+  if (!item || !window.confirm(t("¿Eliminar el proyecto «{name}»?\n\nSe eliminarán también sus colecciones, peticiones y credenciales guardadas. Esta acción no se puede deshacer.", { name: item.name }))) return;
   try {
     await backend().DeleteProject(item.id);
     if (projectId.value === item.id) {
@@ -832,7 +852,7 @@ async function deleteProject(item = project.value) {
       goHome();
     }
     await refreshProjects();
-    flash(`Proyecto «${item.name}» eliminado.`);
+    flash(t("Proyecto «{name}» eliminado.", { name: item.name }));
   } catch (error) {
     flash(error.message || String(error), true);
   }
@@ -846,7 +866,7 @@ async function persistCollection() {
 }
 
 async function createCollection() {
-  const name = window.prompt("Nombre de la colección");
+  const name = window.prompt(t("Nombre de la colección"));
   if (!name?.trim()) return;
   try {
     const saved = await backend().SaveCollection(project.value.id, {
@@ -854,33 +874,33 @@ async function createCollection() {
     });
     await refreshProjects();
     selectCollection(saved);
-    flash("Colección creada.");
+    flash(t("Colección creada."));
   } catch (error) {
     flash(error.message || String(error), true);
   }
 }
 
 async function renameCollection() {
-  const name = window.prompt("Nombre de la colección", collection.value.name);
+  const name = window.prompt(t("Nombre de la colección"), collection.value.name);
   if (!name?.trim()) return;
   collection.value.name = name.trim();
   try {
     await persistCollection();
-    flash("Colección renombrada.");
+    flash(t("Colección renombrada."));
   } catch (error) {
     flash(error.message || String(error), true);
   }
 }
 
 async function deleteCollection() {
-  if (!window.confirm(`¿Eliminar «${collection.value.name}» y todo su contenido?`)) return;
+  if (!window.confirm(t("¿Eliminar «{name}» y todo su contenido?", { name: collection.value.name }))) return;
   try {
     await backend().DeleteCollection(project.value.id, collection.value.id);
     collectionId.value = "";
     folderId.value = "";
     requestId.value = "";
     await refreshProjects();
-    flash("Colección eliminada.");
+    flash(t("Colección eliminada."));
   } catch (error) {
     flash(error.message || String(error), true);
   }
@@ -888,10 +908,10 @@ async function deleteCollection() {
 
 async function createFolder(parentId = "") {
   if (!collection.value) {
-    flash("Selecciona una colección antes de crear una carpeta.", true);
+    flash(t("Selecciona una colección antes de crear una carpeta."), true);
     return;
   }
-  const name = window.prompt(parentId ? "Nombre de la subcarpeta" : "Nombre de la carpeta");
+  const name = window.prompt(t(parentId ? "Nombre de la subcarpeta" : "Nombre de la carpeta"));
   if (!name?.trim()) return;
   const folder = { id: crypto.randomUUID().replaceAll("-", ""), name: name.trim(), requests: [], folders: [] };
   collection.value.folders ||= [];
@@ -899,7 +919,7 @@ async function createFolder(parentId = "") {
   if (parentId) {
     const parent = findFolder(collection.value.folders, parentId);
     if (!parent) {
-      flash("No se encontró la carpeta donde crear la subcarpeta.", true);
+      flash(t("No se encontró la carpeta donde crear la subcarpeta."), true);
       return;
     }
     parent.folders ||= [];
@@ -911,7 +931,7 @@ async function createFolder(parentId = "") {
     expandedCollections.value.add(collectionId.value);
     folderId.value = folder.id;
     requestId.value = "";
-    flash("Carpeta creada.");
+    flash(t("Carpeta creada."));
   } catch (error) {
     const folderIndex = siblings.indexOf(folder);
     if (folderIndex >= 0) siblings.splice(folderIndex, 1);
@@ -930,40 +950,40 @@ function updateFolder(folders, id, action) {
 
 function renameFolder(id) {
   const target = findFolder(collection.value.folders || [], id);
-  const name = window.prompt("Nombre de la carpeta", target?.name || "");
+  const name = window.prompt(t("Nombre de la carpeta"), target?.name || "");
   if (!name?.trim()) return;
   target.name = name.trim();
-  persistCollection().then(() => flash("Carpeta renombrada."))
+  persistCollection().then(() => flash(t("Carpeta renombrada.")))
     .catch((error) => flash(error.message || String(error), true));
 }
 
 function deleteFolder(id) {
   const target = findFolder(collection.value.folders || [], id);
-  if (!window.confirm(`¿Eliminar «${target?.name}» y todo su contenido?`)) return;
+  if (!window.confirm(t("¿Eliminar «{name}» y todo su contenido?", { name: target?.name || "" }))) return;
   updateFolder(collection.value.folders, id, (siblings, index) => siblings.splice(index, 1));
   if (folderId.value === id || !findFolder(collection.value.folders, folderId.value)) {
     folderId.value = "";
     requestId.value = "";
   }
-  persistCollection().then(() => flash("Carpeta eliminada."))
+  persistCollection().then(() => flash(t("Carpeta eliminada.")))
     .catch((error) => flash(error.message || String(error), true));
 }
 
 async function createRequest(parentId = "") {
   if (!collection.value) {
-    flash("Selecciona una colección antes de crear una petición.", true);
+    flash(t("Selecciona una colección antes de crear una petición."), true);
     return;
   }
   const request = {
     id: crypto.randomUUID().replaceAll("-", ""),
-    name: "Nueva petición", method: "GET", path: "/", headers: {}, body: ""
+    name: t("Nueva petición"), method: "GET", path: "/", headers: {}, body: ""
   };
   collection.value.requests ||= [];
   let siblings = collection.value.requests;
   if (parentId) {
     const parent = findFolder(collection.value.folders || [], parentId);
     if (!parent) {
-      flash("No se encontró la carpeta donde crear la petición.", true);
+      flash(t("No se encontró la carpeta donde crear la petición."), true);
       return;
     }
     parent.requests ||= [];
@@ -976,7 +996,7 @@ async function createRequest(parentId = "") {
   closeMenus();
   try {
     await persistCollection();
-    flash("Petición creada.");
+    flash(t("Petición creada."));
   } catch (error) {
     const requestIndex = siblings.indexOf(request);
     if (requestIndex >= 0) siblings.splice(requestIndex, 1);
@@ -989,12 +1009,12 @@ async function duplicateRequest(request, parentId = "") {
   const duplicate = {
     ...JSON.parse(JSON.stringify(request)),
     id: crypto.randomUUID().replaceAll("-", ""),
-    name: `${request.name} (copia)`
+    name: t("{name} (copia)", { name: request.name })
   };
   if (parentId) {
     const parent = findFolder(collection.value?.folders || [], parentId);
     if (!parent) {
-      flash("No se encontró la carpeta donde duplicar la petición.", true);
+      flash(t("No se encontró la carpeta donde duplicar la petición."), true);
       return;
     }
     parent.requests.push(duplicate);
@@ -1007,7 +1027,7 @@ async function duplicateRequest(request, parentId = "") {
   closeMenus();
   try {
     await persistCollection();
-    flash("Petición duplicada.");
+    flash(t("Petición duplicada."));
   } catch (error) {
     flash(error.message || String(error), true);
   }
@@ -1015,11 +1035,11 @@ async function duplicateRequest(request, parentId = "") {
 
 async function deleteRequestByID(id, parentId = "") {
   const request = findRequest(collection.value, id);
-  if (!request || !window.confirm(`¿Eliminar la petición «${request.name}»?`)) return;
+  if (!request || !window.confirm(t("¿Eliminar la petición «{name}»?", { name: request.name }))) return;
   if (parentId) {
     const parent = findFolder(collection.value?.folders || [], parentId);
     if (!parent) {
-      flash("No se encontró la carpeta de la petición.", true);
+      flash(t("No se encontró la carpeta de la petición."), true);
       return;
     }
     parent.requests = parent.requests.filter((item) => item.id !== id);
@@ -1033,7 +1053,7 @@ async function deleteRequestByID(id, parentId = "") {
   closeMenus();
   try {
     await persistCollection();
-    flash("Petición eliminada.");
+    flash(t("Petición eliminada."));
   } catch (error) {
     flash(error.message || String(error), true);
   }
@@ -1042,7 +1062,7 @@ async function deleteRequestByID(id, parentId = "") {
 async function saveRequest() {
   try {
     await persistCollection();
-    flash("Petición guardada.");
+    flash(t("Petición guardada."));
   } catch (error) {
     flash(error.message || String(error), true);
   }
@@ -1067,10 +1087,10 @@ async function runRequest() {
 }
 
 function collectionResultStatus(item) {
-  if (item.status === "pending") return "Pendiente";
-  if (item.status === "running") return "Ejecutando…";
+  if (item.status === "pending") return t("Pendiente");
+  if (item.status === "running") return t("Ejecutando…");
   if (item.status === "error") return "Error";
-  return item.status === "different" ? "Hay diferencias" : "Coincide";
+  return item.status === "different" ? t("Hay diferencias") : t("Coincide");
 }
 
 async function runCollection() {
@@ -1084,7 +1104,7 @@ async function runCollection() {
     const savedCollection = project.value?.collections.find((item) => item.id === runCollectionId);
     const requests = savedCollection ? collectCollectionRequests(savedCollection) : [];
     if (!requests.length) {
-      flash("La colección no tiene peticiones para ejecutar.", true);
+      flash(t("La colección no tiene peticiones para ejecutar."), true);
       return;
     }
 
@@ -1139,7 +1159,7 @@ function showCollectionRunResult(item) {
   if (projectId.value !== run.projectId) openProject(run.projectId);
   const runCollection = project.value?.collections.find((entry) => entry.id === run.collectionId);
   if (!runCollection || !findRequest(runCollection, item.request.id)) {
-    flash("La petición de este resultado ya no está en el proyecto.", true);
+    flash(t("La petición de este resultado ya no está en el proyecto."), true);
     return;
   }
   selectCollection(runCollection);
@@ -1154,7 +1174,7 @@ function readSelectedFile(event) {
     if (!file) return resolve("");
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("No se pudo leer el archivo seleccionado."));
+    reader.onerror = () => reject(new Error(t("No se pudo leer el archivo seleccionado.")));
     reader.readAsText(file);
   });
 }
@@ -1177,7 +1197,7 @@ async function importProject(event) {
       importConflict.value = {
         raw,
         existing,
-        importedName: typeof config.name === "string" && config.name ? config.name : "Proyecto sin nombre"
+        importedName: typeof config.name === "string" && config.name ? config.name : t("Proyecto sin nombre")
       };
       return;
     }
@@ -1194,11 +1214,11 @@ async function completeProjectImport(raw, conflictAction = "") {
   await refreshProjects();
   openProject(imported.id);
   if (conflictAction === "replace") {
-    flash(`Proyecto «${imported.name}» reemplazado. Vuelve a configurar la autenticación; las credenciales no se incluyen en la importación.`);
+    flash(t("Proyecto «{name}» reemplazado. Vuelve a configurar la autenticación; las credenciales no se incluyen en la importación.", { name: imported.name }));
   } else if (conflictAction === "copy") {
-    flash(`Proyecto importado como «${imported.name}». Las credenciales no se incluyen.`);
+    flash(t("Proyecto importado como «{name}». Las credenciales no se incluyen.", { name: imported.name }));
   } else {
-    flash(`Proyecto «${imported.name}» importado.`);
+    flash(t("Proyecto «{name}» importado.", { name: imported.name }));
   }
 }
 
@@ -1217,7 +1237,7 @@ async function exportProject(item) {
   try {
     const path = await backend().ExportProject(item.id);
     if (!path) return;
-    flash(`Proyecto «${item.name}» exportado a ${path}. Incluye destinos, variables, colecciones y peticiones; las credenciales no se incluyen.`);
+    flash(t("Proyecto «{name}» exportado a {path}. Incluye destinos, variables, colecciones y peticiones; las credenciales no se incluyen.", { name: item.name, path }));
   } catch (error) {
     flash(error.message || String(error), true);
   }
@@ -1234,7 +1254,7 @@ async function createDemoProject() {
       const sampleRequest = sampleCollection.requests?.[0];
       if (sampleRequest) selectRequest(sampleRequest.id);
     }
-    flash("Proyecto de ejemplo listo. Pulsa Enviar para ver las diferencias.");
+    flash(t("Proyecto de ejemplo listo. Pulsa Enviar para ver las diferencias."));
   } catch (error) {
     flash(error.message || String(error), true);
   }
@@ -1248,9 +1268,9 @@ async function importPostman(event) {
     await refreshProjects();
     selectCollection(imported.collection);
     if (imported.warnings?.length) {
-      window.alert(`Colección importada con estas limitaciones:\n\n• ${imported.warnings.join("\n• ")}`);
+      window.alert(t("Colección importada con estas limitaciones:\n\n• {warnings}", { warnings: imported.warnings.join("\n• ") }));
     }
-    flash(`Colección «${imported.collection.name}» importada.`);
+    flash(t("Colección «{name}» importada.", { name: imported.collection.name }));
   } catch (error) {
     flash(error.message || String(error), true);
   }
@@ -1258,7 +1278,7 @@ async function importPostman(event) {
 
 function prettyBody(body) {
   try { return JSON.stringify(JSON.parse(body), null, 2); }
-  catch { return body || "(respuesta vacía)"; }
+  catch { return body || t("(respuesta vacía)"); }
 }
 
 function statusClass(item) {
@@ -1270,6 +1290,7 @@ function statusClass(item) {
 
 onMounted(async () => {
   setTheme(isDark.value);
+  document.documentElement.lang = locale.value;
   const savedSidebarWidth = Number(getPreference("sidebar-width"));
   if (Number.isFinite(savedSidebarWidth) && savedSidebarWidth > 0) {
     sidebarWidth.value = clampSidebarWidth(savedSidebarWidth);
@@ -1285,23 +1306,23 @@ onMounted(async () => {
 <template>
   <div class="shell" @click="closeMenus">
     <header class="topbar">
-      <div class="brand" @click="goHome" title="Inicio">
+      <div class="brand" @click="goHome" :title="t('Inicio')">
         <span class="brand-mark">T</span><span>DiffTwin</span>
       </div>
       <div class="top-divider"></div>
-      <button v-if="project" class="nav-home" title="Volver al dashboard" aria-label="Volver al dashboard" @click="goHome">
+      <button v-if="project" class="nav-home" :title="t('Volver al dashboard')" :aria-label="t('Volver al dashboard')" @click="goHome">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m2.8 9 7.2-6 7.2 6v8H12v-5H8v5H2.8V9Z"/></svg>
       </button>
       <div v-if="project" class="project-switch">
-        <select v-model="projectId" aria-label="Proyecto" @change="openProject(projectId)">
+        <select v-model="projectId" :aria-label="t('Proyecto')" @change="openProject(projectId)">
           <option v-for="item in projects" :key="item.id" :value="item.id">{{ item.name }}</option>
         </select>
         <span class="chevron" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m4.5 6 3.5 3.5L11.5 6" /></svg></span>
       </div>
-      <div v-else class="top-context">Espacio de trabajo</div>
+      <div v-else class="top-context">{{ t("Espacio de trabajo") }}</div>
       <div class="top-spacer"></div>
       <template v-if="project">
-        <button class="icon-button topbar-action" title="Configuración del proyecto" aria-label="Configuración del proyecto" @click="editProject">
+        <button class="icon-button topbar-action" :title="t('Configuración del proyecto')" :aria-label="t('Configuración del proyecto')" @click="editProject">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 2.8h3l.45 1.7c.47.15.9.4 1.3.7l1.7-.55 1.5 2.6-1.25 1.25c.1.5.1 1 0 1.5l1.25 1.25-1.5 2.6-1.7-.55c-.4.3-.83.55-1.3.7l-.45 1.7h-3l-.45-1.7a5.6 5.6 0 0 1-1.3-.7l-1.7.55-1.5-2.6 1.25-1.25a4.8 4.8 0 0 1 0-1.5L3.55 7.25l1.5-2.6 1.7.55c.4-.3.83-.55 1.3-.7l.45-1.7Z"/><circle cx="10" cy="9.25" r="2.3"/></svg>
         </button>
       </template>
@@ -1315,18 +1336,18 @@ onMounted(async () => {
     <main v-if="!project" class="dashboard">
       <div class="dashboard-heading">
         <div>
-          <div class="eyebrow">TU ESPACIO DE TRABAJO</div>
-          <h1>Tus proyectos</h1>
-          <p>Organiza tus APIs y compara cambios entre entornos.</p>
-          <p class="demo-caption">El ejemplo usa un servicio público de eco y requiere conexión a internet.</p>
+          <div class="eyebrow">{{ t("TU ESPACIO DE TRABAJO") }}</div>
+          <h1>{{ t("Tus proyectos") }}</h1>
+          <p>{{ t("Organiza tus APIs y compara cambios entre entornos.") }}</p>
+          <p class="demo-caption">{{ t("El ejemplo usa un servicio público de eco y requiere conexión a internet.") }}</p>
         </div>
         <div class="dashboard-actions">
-          <button class="button secondary" @click="createDemoProject">▷ Probar ejemplo</button>
+          <button class="button secondary" @click="createDemoProject">▷ {{ t("Probar ejemplo") }}</button>
           <button class="button secondary project-action-button" @click="projectFileInput.click()">
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3m0 0L6.5 6.5M10 3l3.5 3.5M4 11v5h12v-5"/></svg>
-            Importar proyecto
+            {{ t("Importar proyecto") }}
           </button>
-          <button class="button primary" @click="newProject">＋ Nuevo proyecto</button>
+          <button class="button primary" @click="newProject">＋ {{ t("Nuevo proyecto") }}</button>
           <input ref="projectFileInput" type="file" accept=".json,application/json" hidden @change="importProject">
         </div>
       </div>
@@ -1338,7 +1359,7 @@ onMounted(async () => {
               <span class="card-arrow">↗</span>
             </div>
             <strong>{{ item.name }}</strong>
-            <span class="card-meta">{{ item.collections.length }} colecciones · {{ item.collections.reduce((n, c) => n + countRequests(c.requests || [], c.folders || []), 0) }} peticiones</span>
+            <span class="card-meta">{{ projectSummary(item) }}</span>
             <div class="target-summary">
               <span><i class="target-dot stable"></i>{{ item.primary }}</span>
               <span><i class="target-dot candidate"></i>{{ item.candidate }}</span>
@@ -1346,25 +1367,25 @@ onMounted(async () => {
             </div>
           </button>
           <div class="project-card-actions">
-            <button class="button quiet project-action-button" :aria-label="`Exportar proyecto ${item.name}`" @click="exportProject(item)">
+            <button class="button quiet project-action-button" :aria-label="`${t('Exportar proyecto')} ${item.name}`" @click="exportProject(item)">
               <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 8v9m0 0 3.5-3.5M10 17l-3.5-3.5M4 9V4h12v5"/></svg>
-              Exportar proyecto
+              {{ t("Exportar proyecto") }}
             </button>
-            <button class="button quiet project-card-delete project-action-button" :aria-label="`Eliminar proyecto ${item.name}`" @click="deleteProject(item)">
+            <button class="button quiet project-card-delete project-action-button" :aria-label="`${t('Eliminar')} ${t('proyecto')} ${item.name}`" @click="deleteProject(item)">
               <svg class="project-delete-icon" viewBox="0 0 20 20" aria-hidden="true">
                 <path d="M5 6.25h10l-.7 9.1a1 1 0 0 1-1 .9H6.7a1 1 0 0 1-1-.9L5 6.25Z" />
                 <path d="M3.75 4.75h12.5M8 4.75v-1a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1m-4 3.5v5m3-5v5" />
               </svg>
-              Eliminar
+              {{ t("Eliminar") }}
             </button>
           </div>
         </article>
       </div>
       <div v-else class="empty-state">
         <span class="empty-icon">◇</span>
-        <h2>Empieza creando un proyecto</h2>
-        <p>Configura tus destinos y guarda tus primeras peticiones de API.</p>
-        <button class="button primary" @click="newProject">＋ Crear proyecto</button>
+        <h2>{{ t("Empieza creando un proyecto") }}</h2>
+        <p>{{ t("Configura tus destinos y guarda tus primeras peticiones de API.") }}</p>
+        <button class="button primary" @click="newProject">＋ {{ t("Crear proyecto") }}</button>
       </div>
     </main>
 
@@ -1373,28 +1394,28 @@ onMounted(async () => {
         <div class="sidebar-heading">
           <div v-if="!collectionSearchOpen" class="sidebar-heading-title">
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2.8 6.7 3.6v7.2L10 17.2l-6.7-3.6V6.4L10 2.8Z"/><path d="m3.3 6.4 6.7 3.7 6.7-3.7M10 10.1v7.1"/></svg>
-            <span>Colecciones</span>
+            <span>{{ t("Colecciones") }}</span>
           </div>
           <input
             v-else
             ref="collectionSearchInput"
             v-model="collectionSearch"
             class="collection-search"
-            aria-label="Buscar colecciones y peticiones"
-            placeholder="Buscar…"
+            :aria-label="t('Buscar colecciones y peticiones')"
+            :placeholder="t('Buscar…')"
             @keydown.esc="toggleCollectionSearch"
           >
           <div class="sidebar-heading-actions">
-            <button class="icon-button" :title="collectionSearchOpen ? 'Cerrar búsqueda' : 'Buscar'" :aria-label="collectionSearchOpen ? 'Cerrar búsqueda' : 'Buscar'" @click="toggleCollectionSearch">
+            <button class="icon-button" :title="t(collectionSearchOpen ? 'Cerrar búsqueda' : 'Buscar')" :aria-label="t(collectionSearchOpen ? 'Cerrar búsqueda' : 'Buscar')" @click="toggleCollectionSearch">
               <svg v-if="!collectionSearchOpen" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.7" cy="8.7" r="5.6"/><path d="m12.8 12.8 4 4"/></svg>
               <svg v-else viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg>
             </button>
-            <button class="icon-button" title="Nueva colección" aria-label="Nueva colección" @click="createCollection">＋</button>
-            <button class="icon-button" title="Más opciones" aria-label="Más opciones" :aria-expanded="activeMenu === menuKey('import')" @click.stop="toggleMenu('import')">
+            <button class="icon-button" :title="t('Nueva colección')" :aria-label="t('Nueva colección')" @click="createCollection">＋</button>
+            <button class="icon-button" :title="t('Más opciones')" :aria-label="t('Más opciones')" :aria-expanded="activeMenu === menuKey('import')" @click.stop="toggleMenu('import')">
               <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1"/><circle cx="10" cy="10" r="1"/><circle cx="16" cy="10" r="1"/></svg>
             </button>
             <div v-if="activeMenu === menuKey('import')" class="collection-menu sidebar-options-menu" @click.stop>
-              <button @click="closeMenus(); postmanFileInput.click()">Importar colección de Postman</button>
+              <button @click="closeMenus(); postmanFileInput.click()">{{ t("Importar colección de Postman") }}</button>
             </div>
           </div>
           <input ref="postmanFileInput" type="file" accept=".json,application/json" hidden @change="importPostman">
@@ -1404,13 +1425,13 @@ onMounted(async () => {
             <div
               class="tree-row collection-row"
               :class="{ selected: collectionId === item.id && !folderId && !requestId, 'menu-open': activeMenu === menuKey('collection', item.id), 'drop-target': treeDropTarget === treeDropTargetKey('collection', item.id) }"
-              title="Suelta aquí para mover a la colección"
+              :title="t('Suelta aquí para mover a la colección')"
               @dragover="treeDragOver($event, item.id)"
               @drop.prevent.stop="dropTreeItem(item.id)"
             >
               <button
                 class="tree-toggle"
-                :aria-label="expandedCollections.has(item.id) ? 'Contraer colección' : 'Expandir colección'"
+                :aria-label="t(expandedCollections.has(item.id) ? 'Contraer colección' : 'Expandir colección')"
                 :aria-expanded="expandedCollections.has(item.id)"
                 @click="toggleCollection(item)"
               >
@@ -1424,22 +1445,22 @@ onMounted(async () => {
               <div class="tree-actions">
                 <button
                   class="icon-button tiny"
-                  title="Opciones de colección"
+                  :title="t('Opciones de colección')"
                   :aria-expanded="activeMenu === menuKey('collection', item.id)"
                   @click.stop="toggleMenu('collection', item.id)"
                 >···</button>
               </div>
               <div v-if="activeMenu === menuKey('collection', item.id)" class="collection-menu" @click.stop>
-                <button @click="selectCollection(item); createRequest()">＋ Nueva petición</button>
-                <button @click="selectCollection(item); createFolder()">＋ Nueva carpeta</button>
+                <button @click="selectCollection(item); createRequest()">＋ {{ t("Nueva petición") }}</button>
+                <button @click="selectCollection(item); createFolder()">＋ {{ t("Nueva carpeta") }}</button>
                 <div class="collection-menu-separator"></div>
                 <button
                   :disabled="busy || countRequests(item.requests || [], item.folders || []) === 0"
                   @click="closeMenus(); runCollectionFromMenu(item)"
-                >▶ Ejecutar colección ({{ countRequests(item.requests || [], item.folders || []) }})</button>
+                >▶ {{ t("Ejecutar colección ({count})", { count: countRequests(item.requests || [], item.folders || []) }) }}</button>
                 <div class="collection-menu-separator"></div>
-                <button @click="selectCollection(item); renameCollection()">Renombrar colección</button>
-                <button class="collection-menu-danger" @click="selectCollection(item); deleteCollection()">Eliminar colección</button>
+                <button @click="selectCollection(item); renameCollection()">{{ t("Renombrar colección") }}</button>
+                <button class="collection-menu-danger" @click="selectCollection(item); deleteCollection()">{{ t("Eliminar colección") }}</button>
               </div>
             </div>
             <div v-if="expandedCollections.has(item.id) || collectionSearch.trim()" class="tree-children">
@@ -1449,7 +1470,7 @@ onMounted(async () => {
                   :class="{ selected: collectionId === item.id && requestId === request.id, 'menu-open': activeMenu === menuKey('request', request.id) }"
                   role="button"
                   tabindex="0"
-                  title="Arrastra la petición a una carpeta o colección para moverla"
+                  :title="t('Arrastra la petición a una carpeta o colección para moverla')"
                   draggable="true"
                   @click="selectRequest(request.id)"
                   @keydown.enter="selectRequest(request.id)"
@@ -1460,18 +1481,19 @@ onMounted(async () => {
                   <span class="method-badge" :class="`method-${request.method.toLowerCase()}`">{{ request.method }}</span>
                   <span class="tree-name">{{ request.name }}</span>
                   <span class="tree-actions">
-                    <button class="icon-button tiny" title="Opciones de petición" :aria-expanded="activeMenu === menuKey('request', request.id)" @click.stop="toggleMenu('request', request.id)">···</button>
+                    <button class="icon-button tiny" :title="t('Opciones de petición')" :aria-expanded="activeMenu === menuKey('request', request.id)" @click.stop="toggleMenu('request', request.id)">···</button>
                   </span>
                 </div>
                 <div v-if="activeMenu === menuKey('request', request.id)" class="collection-menu request-menu" @click.stop>
-                  <button @click="closeMenus(); duplicateRequest(request)">Duplicar petición</button>
-                  <button class="collection-menu-danger" @click="closeMenus(); deleteRequestByID(request.id)">Eliminar petición</button>
+                  <button @click="closeMenus(); duplicateRequest(request)">{{ t("Duplicar petición") }}</button>
+                  <button class="collection-menu-danger" @click="closeMenus(); deleteRequestByID(request.id)">{{ t("Eliminar petición") }}</button>
                 </div>
               </div>
               <FolderTree
                 v-for="folder in item.folders || []"
                 :key="folder.id"
                 :folder="folder"
+                :locale="locale"
                 :collection-id="item.id"
                 :selected-collection-id="collectionId"
                 :selected-folder-id="folderId"
@@ -1498,15 +1520,15 @@ onMounted(async () => {
             </div>
           </div>
           <div v-if="!visibleCollections.length" class="sidebar-empty">
-            <p v-if="collectionSearch.trim()">No se encontraron coincidencias.</p>
+            <p v-if="collectionSearch.trim()">{{ t("No se encontraron coincidencias.") }}</p>
             <template v-else>
-            <p>Aún no hay colecciones.</p>
-            <button class="button secondary small" @click="createCollection">Crear colección</button>
+            <p>{{ t("Aún no hay colecciones.") }}</p>
+            <button class="button secondary small" @click="createCollection">{{ t("Crear colección") }}</button>
             </template>
           </div>
         </div>
         <div class="sidebar-bottom">
-          <span>{{ requestCount }} peticiones</span>
+          <span>{{ t(requestCount === 1 ? "{count} petición" : "{count} peticiones", { count: requestCount }) }}</span>
           <span>DiffTwin</span>
         </div>
       </aside>
@@ -1514,7 +1536,7 @@ onMounted(async () => {
       <div
         class="sidebar-resizer"
         role="separator"
-        aria-label="Cambiar ancho del panel lateral"
+        :aria-label="t('Cambiar ancho del panel lateral')"
         aria-orientation="vertical"
         :aria-valuenow="sidebarWidth"
         :aria-valuemin="minSidebarWidth"
@@ -1538,8 +1560,8 @@ onMounted(async () => {
         </div>
         <section v-if="visibleCollectionRun" class="collection-run-panel" aria-live="polite">
           <header class="collection-run-heading">
-            <strong>RESULTADOS · {{ visibleCollectionRun.collectionName }}</strong>
-            <span>{{ visibleCollectionRun.completed }}/{{ visibleCollectionRun.total }} completadas</span>
+            <strong>{{ t("RESULTADOS · {name}", { name: visibleCollectionRun.collectionName }) }}</strong>
+            <span>{{ t("{completed}/{total} completadas", { completed: visibleCollectionRun.completed, total: visibleCollectionRun.total }) }}</span>
           </header>
           <div class="collection-run-list">
             <button
@@ -1557,89 +1579,89 @@ onMounted(async () => {
           </div>
         </section>
         <div class="target-strip" :class="{ 'target-strip-two': !project.secondary }">
-          <button type="button" class="target-chip target-chip-button" aria-label="Editar estable principal" @click="editProject('primary')">
-            <i class="target-dot stable"></i><span class="target-chip-content"><span>ESTABLE PRINCIPAL</span><strong>{{ project.primary }}</strong></span>
+          <button type="button" class="target-chip target-chip-button" :aria-label="t('Editar estable principal')" @click="editProject('primary')">
+            <i class="target-dot stable"></i><span class="target-chip-content"><span>{{ t("ESTABLE PRINCIPAL") }}</span><strong>{{ project.primary }}</strong></span>
           </button>
-          <button type="button" class="target-chip target-chip-button" aria-label="Editar candidata" @click="editProject('candidate')">
-            <i class="target-dot candidate"></i><span class="target-chip-content"><span>CANDIDATA</span><strong>{{ project.candidate }}</strong></span>
+          <button type="button" class="target-chip target-chip-button" :aria-label="t('Editar candidata')" @click="editProject('candidate')">
+            <i class="target-dot candidate"></i><span class="target-chip-content"><span>{{ t("CANDIDATA") }}</span><strong>{{ project.candidate }}</strong></span>
           </button>
-          <button v-if="project.secondary" type="button" class="target-chip target-chip-button" aria-label="Editar estable secundaria" @click="editProject('secondary')">
-            <i class="target-dot stable"></i><span class="target-chip-content"><span>ESTABLE SECUNDARIA</span><strong>{{ project.secondary }}</strong></span>
+          <button v-if="project.secondary" type="button" class="target-chip target-chip-button" :aria-label="t('Editar estable secundaria')" @click="editProject('secondary')">
+            <i class="target-dot stable"></i><span class="target-chip-content"><span>{{ t("ESTABLE SECUNDARIA") }}</span><strong>{{ project.secondary }}</strong></span>
           </button>
         </div>
         <details class="workspace-auth">
           <summary class="workspace-auth-summary">
-            <span><strong>Configuración de destinos</strong><small>Autenticación, variables y opciones de comparación</small></span>
-            <span class="settings-toggle">Configurar <span aria-hidden="true">⌄</span></span>
+            <span><strong>{{ t("Configuración de destinos") }}</strong><small>{{ t("Autenticación, variables y opciones de comparación") }}</small></span>
+            <span class="settings-toggle">{{ t("Configurar") }} <span aria-hidden="true">⌄</span></span>
           </summary>
           <div class="workspace-auth-content">
           <div class="workspace-auth-heading">
-            <div><strong>Autenticación y opciones</strong><span>Configura credenciales y opciones por proyecto.</span></div>
+            <div><strong>{{ t("Autenticación y opciones") }}</strong><span>{{ t("Configura credenciales y opciones por proyecto.") }}</span></div>
             <button class="button primary small" :disabled="authSaving || authLoadedProjectId !== project.id" @click="saveProjectAuth">
-              {{ authSaving ? "Guardando…" : "Guardar opciones" }}
+              {{ authSaving ? t("Guardando…") : t("Guardar opciones") }}
             </button>
           </div>
           <div class="auth-target-tabs">
-            <button type="button" class="button small" :class="authTarget === 'primary' ? 'primary' : 'secondary'" @click="setAuthTarget('primary')">Estable principal</button>
-            <button type="button" class="button small" :class="authTarget === 'candidate' ? 'primary' : 'secondary'" @click="setAuthTarget('candidate')">Candidata</button>
-            <button v-if="project.secondary" type="button" class="button small" :class="authTarget === 'secondary' ? 'primary' : 'secondary'" @click="setAuthTarget('secondary')">Estable secundaria</button>
+            <button type="button" class="button small" :class="authTarget === 'primary' ? 'primary' : 'secondary'" @click="setAuthTarget('primary')">{{ t("Estable principal") }}</button>
+            <button type="button" class="button small" :class="authTarget === 'candidate' ? 'primary' : 'secondary'" @click="setAuthTarget('candidate')">{{ t("Candidata") }}</button>
+            <button v-if="project.secondary" type="button" class="button small" :class="authTarget === 'secondary' ? 'primary' : 'secondary'" @click="setAuthTarget('secondary')">{{ t("Estable secundaria") }}</button>
           </div>
-          <p v-if="authLoadingProjectId === project.id" class="auth-storage-note">Cargando autenticación…</p>
+          <p v-if="authLoadingProjectId === project.id" class="auth-storage-note">{{ t("Cargando autenticación…") }}</p>
           <div class="workspace-auth-fields">
-            <label class="field-label">MÉTODO
+            <label class="field-label">{{ t("MÉTODO") }}
               <select :value="authForm.auth[authTarget].type || 'none'" @change="setAuthType($event.target.value)">
-                <option value="none">Sin autenticación</option>
+                <option value="none">{{ t("Sin autenticación") }}</option>
                 <option value="bearer">Bearer</option>
                 <option value="basic">Basic</option>
                 <option value="api_key">API key</option>
               </select>
             </label>
             <template v-if="authForm.auth[authTarget].type === 'bearer'">
-              <label class="field-label">TOKEN<input v-model="authForm.credentials[authTarget].token" type="password" autocomplete="new-password" required></label>
+              <label class="field-label">{{ t("TOKEN") }}<input v-model="authForm.credentials[authTarget].token" type="password" autocomplete="new-password" required></label>
             </template>
             <template v-else-if="authForm.auth[authTarget].type === 'basic'">
-              <label class="field-label">USUARIO<input v-model="authForm.credentials[authTarget].username" autocomplete="off"></label>
-              <label class="field-label">CONTRASEÑA<input v-model="authForm.credentials[authTarget].password" type="password" autocomplete="new-password" required></label>
+              <label class="field-label">{{ t("USUARIO") }}<input v-model="authForm.credentials[authTarget].username" autocomplete="off"></label>
+              <label class="field-label">{{ t("CONTRASEÑA") }}<input v-model="authForm.credentials[authTarget].password" type="password" autocomplete="new-password" required></label>
             </template>
             <template v-else-if="authForm.auth[authTarget].type === 'api_key'">
-              <label class="field-label">NOMBRE DE LA CLAVE<input v-model="authForm.auth[authTarget].api_key_name" required placeholder="X-API-Key"></label>
-              <label class="field-label">ENVIAR EN
+              <label class="field-label">{{ t("NOMBRE DE LA CLAVE") }}<input v-model="authForm.auth[authTarget].api_key_name" required placeholder="X-API-Key"></label>
+              <label class="field-label">{{ t("ENVIAR EN") }}
                 <select v-model="authForm.auth[authTarget].api_key_location">
                   <option value="header">Header</option>
-                  <option value="query">Query parameter</option>
+                  <option value="query">{{ t("Parámetro de consulta") }}</option>
                 </select>
               </label>
-              <label class="field-label">VALOR<input v-model="authForm.credentials[authTarget].api_key" type="password" autocomplete="new-password" required></label>
+              <label class="field-label">{{ t("VALOR") }}<input v-model="authForm.credentials[authTarget].api_key" type="password" autocomplete="new-password" required></label>
             </template>
           </div>
-          <label class="field-label destination-variables-field">VARIABLES ESPECÍFICAS · JSON
+          <label class="field-label destination-variables-field">{{ t("VARIABLES ESPECÍFICAS · JSON") }}
             <textarea
               v-model="destinationVariableDrafts[authTarget]"
               spellcheck="false"
               placeholder='{ "region": "eu-west", "userId": "123" }'
             ></textarea>
           </label>
-          <p class="auth-storage-note">Estas variables sobrescriben las comunes solo para este destino; las demás conservan el valor común. Se guardan en el JSON del proyecto sin cifrar: no pongas secretos aquí.</p>
+          <p class="auth-storage-note">{{ t("Estas variables sobrescriben las comunes solo para este destino; las demás conservan el valor común. Se guardan en el JSON del proyecto sin cifrar: no pongas secretos aquí.") }}</p>
           <p v-if="authForm.auth[authTarget].type === 'api_key' && authForm.auth[authTarget].api_key_location === 'query'" class="auth-security-warning">
-            Las claves en la URL pueden quedar en registros del servidor o de proxies. Usa Header si la API lo admite.
+            {{ t("Las claves en la URL pueden quedar en registros del servidor o de proxies. Usa Header si la API lo admite.") }}
           </p>
-          <p v-if="authCredentialsMissing" class="auth-security-warning">Faltan credenciales guardadas en el sistema. Vuelve a introducirlas para este proyecto.</p>
-          <p v-if="authLoadedProjectId !== project.id && authLoadingProjectId !== project.id" class="auth-security-warning">No se pudieron cargar las credenciales seguras. Comprueba que el almacén del sistema esté disponible.</p>
+          <p v-if="authCredentialsMissing" class="auth-security-warning">{{ t("Faltan credenciales guardadas en el sistema. Vuelve a introducirlas para este proyecto.") }}</p>
+          <p v-if="authLoadedProjectId !== project.id && authLoadingProjectId !== project.id" class="auth-security-warning">{{ t("No se pudieron cargar las credenciales seguras. Comprueba que el almacén del sistema esté disponible.") }}</p>
           <div class="comparison-settings">
-            <label class="field-label">IGNORAR RUTAS JSON · UNA POR LÍNEA
+            <label class="field-label">{{ t("IGNORAR RUTAS JSON · UNA POR LÍNEA") }}
               <textarea v-model="ignoredJSONPathsText" spellcheck="false" placeholder="$.meta.generatedAt&#10;$.items[*].id"></textarea>
             </label>
-            <p>Admite rutas como <code>$.meta.timestamp</code>, <code>$["campo.con.puntos"]</code> y comodines <code>*</code>. Guardar autenticación también guarda estas opciones.</p>
+            <p>{{ t("Admite rutas como $.meta.timestamp, $[\"campo.con.puntos\"] y comodines *. Guardar autenticación también guarda estas opciones.") }}</p>
           </div>
-          <p class="auth-storage-note">Las credenciales se guardan en el almacén seguro del sistema y no se incluyen en la configuración JSON del proyecto.</p>
+          <p class="auth-storage-note">{{ t("Las credenciales se guardan en el almacén seguro del sistema y no se incluyen en la configuración JSON del proyecto.") }}</p>
           </div>
         </details>
 
         <section v-if="selectedRequest" class="request-editor">
           <div class="request-sticky">
             <div class="request-titlebar">
-              <div><span class="eyebrow">PETICIÓN</span><input v-model="selectedRequest.name" class="request-title-input" aria-label="Nombre de petición"></div>
-              <button class="icon-button danger-icon" title="Eliminar petición" aria-label="Eliminar petición" @click="deleteRequest">
+              <div><span class="eyebrow">{{ t("PETICIÓN") }}</span><input v-model="selectedRequest.name" class="request-title-input" :aria-label="t('Nombre de petición')"></div>
+              <button class="icon-button danger-icon" :title="t('Eliminar petición')" :aria-label="t('Eliminar petición')" @click="deleteRequest">
                 <svg class="trash-icon" viewBox="0 0 16 16" aria-hidden="true">
                   <path d="M2.5 4.5h11M6 4.5V3h4v1.5m2.5 0-.7 9h-6L5 4.5m2.5 2.2v4.5m3-4.5v4.5" />
                 </svg>
@@ -1651,7 +1673,7 @@ onMounted(async () => {
               </select>
               <input v-model="selectedRequest.path" class="url-input" placeholder="/v1/users/{{userId}}">
               <button class="button primary send-button" :disabled="busy" @click="runRequest">
-                <span v-if="busy" class="spinner"></span><span v-else>▶</span>{{ busy ? "Ejecutando…" : "Enviar" }}
+                <span v-if="busy" class="spinner"></span><span v-else>▶</span>{{ busy ? t("Ejecutando…") : t("Enviar") }}
               </button>
             </div>
           </div>
@@ -1660,46 +1682,46 @@ onMounted(async () => {
             <button class="editor-tab" :class="{ active: activeEditorTab === 'headers' }" @click="activeEditorTab = 'headers'">Headers <span class="tab-count">{{ Object.keys(selectedRequest.headers || {}).length }}</span></button>
             <button class="editor-tab" :class="{ active: activeEditorTab === 'body' }" @click="activeEditorTab = 'body'">Body</button>
             <span class="tab-spacer"></span>
-            <button class="button secondary small" @click="saveRequest">Guardar</button>
+            <button class="button secondary small" @click="saveRequest">{{ t("Guardar") }}</button>
           </div>
           <div class="editor-grid single">
             <div v-if="activeEditorTab === 'params'" class="params-editor">
-              <div class="params-heading"><span>PARÁMETROS DE CONSULTA</span><button class="button secondary small" @click="addQueryParam">＋ Añadir parámetro</button></div>
+              <div class="params-heading"><span>{{ t("PARÁMETROS DE CONSULTA") }}</span><button class="button secondary small" @click="addQueryParam">{{ t("＋ Añadir parámetro") }}</button></div>
               <div v-if="queryParams.length" class="params-table">
-                <div class="param-row param-column-head"><span>CLAVE</span><span>VALOR</span><span></span></div>
+                <div class="param-row param-column-head"><span>{{ t("CLAVE") }}</span><span>{{ t("VALOR") }}</span><span></span></div>
                 <div v-for="(param, index) in queryParams" :key="index" class="param-row">
-                  <input v-model="param.key" aria-label="Clave del parámetro" placeholder="page" @change="updateQueryPath">
-                  <input v-model="param.value" aria-label="Valor del parámetro" placeholder="1" @change="updateQueryPath">
-                  <button class="icon-button danger-icon" :aria-label="`Eliminar parámetro ${param.key || index + 1}`" title="Eliminar parámetro" @click="removeQueryParam(index)">×</button>
+                  <input v-model="param.key" :aria-label="t('Clave del parámetro')" placeholder="page" @change="updateQueryPath">
+                  <input v-model="param.value" :aria-label="t('Valor del parámetro')" placeholder="1" @change="updateQueryPath">
+                  <button class="icon-button danger-icon" :aria-label="t('Eliminar parámetro {name}', { name: param.key || index + 1 })" :title="t('Eliminar parámetro')" @click="removeQueryParam(index)">×</button>
                 </div>
               </div>
-              <p v-else class="params-empty">No hay parámetros. Añade uno o escribe una query en la URL.</p>
+              <p v-else class="params-empty">{{ t("No hay parámetros. Añade uno o escribe una query en la URL.") }}</p>
             </div>
-            <label v-if="activeEditorTab === 'headers'" class="field-label">HEADERS · JSON
+            <label v-if="activeEditorTab === 'headers'" class="field-label">{{ t("HEADERS · JSON") }}
               <textarea
                 :value="JSON.stringify(selectedRequest.headers || {}, null, 2)"
                 spellcheck="false"
-                @change="(event) => { try { selectedRequest.headers = JSON.parse(event.target.value); } catch { flash('Headers debe ser JSON válido.', true); } }"
+                @change="(event) => { try { selectedRequest.headers = JSON.parse(event.target.value); } catch { flash(t('Headers debe ser JSON válido.'), true); } }"
               ></textarea>
             </label>
-            <label v-else-if="activeEditorTab === 'body'" class="field-label">BODY
+            <label v-else-if="activeEditorTab === 'body'" class="field-label">{{ t("BODY") }}
               <textarea v-model="selectedRequest.body" spellcheck="false" placeholder='{ "example": true }'></textarea>
             </label>
           </div>
           <div v-if="response" class="response-section">
-            <div class="response-heading"><span>RESULTADO DE LA COMPARACIÓN</span><span>Estable principal frente a candidata</span></div>
+            <div class="response-heading"><span>{{ t("RESULTADO DE LA COMPARACIÓN") }}</span><span>{{ t("Candidata frente a estable principal") }}</span></div>
             <div class="verdict" :class="comparisonSummary.tone">
               <span class="verdict-icon">{{ comparisonSummary.icon }}</span>
               <strong>{{ comparisonSummary.title }}</strong>
               <span>{{ comparisonSummary.detail }}</span>
-              <span v-if="response.secondary_enabled && response.noise_detected" class="noise-badge">Posible ruido entre estables</span>
+              <span v-if="response.secondary_enabled && response.noise_detected" class="noise-badge">{{ t("Posible ruido entre estables") }}</span>
             </div>
-            <div class="latency-comparison" aria-label="Comparación de tiempos de respuesta">
+            <div class="latency-comparison" :aria-label="t('Comparación de tiempos de respuesta')">
               <span v-for="item in latencySummaries" :key="item.name">
                 <strong>{{ item.name }}:</strong> {{ item.duration }} ms
-                <small>({{ item.delta > 0 ? "+" : "" }}{{ item.delta }} ms frente a estable principal)</small>
+                <small>({{ t("{delta} ms frente a estable principal", { delta: `${item.delta > 0 ? "+" : ""}${item.delta}` }) }})</small>
               </span>
-              <small>La latencia es informativa y no cambia el veredicto.</small>
+              <small>{{ t("La latencia es informativa y no cambia el veredicto.") }}</small>
             </div>
             <section
               v-for="panel in comparisonPanels"
@@ -1710,11 +1732,11 @@ onMounted(async () => {
             >
               <header class="diff-heading">
                 <strong>{{ panel.title }}</strong>
-                <span>{{ Math.min(panel.diffs.length, 100) }}{{ panel.diffs.length > 100 ? "+" : "" }} {{ panel.diffs.length === 1 ? "cambio" : "cambios" }}</span>
+                <span>{{ t(panel.diffs.length === 1 ? "{count} cambio" : "{count} cambios", { count: Math.min(panel.diffs.length, 100) + (panel.diffs.length > 100 ? "+" : "") }) }}</span>
               </header>
               <div class="diff-table">
                 <div class="diff-row diff-column-head">
-                  <span>Ruta</span><span>{{ panel.leftLabel }}</span><span>{{ panel.rightLabel }}</span>
+                  <span>{{ t("Ruta") }}</span><span>{{ panel.leftLabel }}</span><span>{{ panel.rightLabel }}</span>
                 </div>
                 <div v-for="(diff, index) in panel.diffs.slice(0, 100)" :key="`${diff.path}-${index}`" class="diff-row" :class="`diff-${diff.kind}`">
                   <code class="diff-path" :title="diff.path">{{ diff.path }}</code>
@@ -1722,12 +1744,12 @@ onMounted(async () => {
                   <code class="diff-value" :title="String(diff.after).slice(0, 1000)">{{ diff.after }}</code>
                 </div>
               </div>
-              <p v-if="panel.diffs.length > 100" class="diff-truncated">Se muestran los primeros 100 cambios.</p>
+              <p v-if="panel.diffs.length > 100" class="diff-truncated">{{ t("Se muestran los primeros 100 cambios.") }}</p>
             </section>
             <div class="response-grid" :class="{ 'response-grid-two': !response.secondary_enabled }">
               <article v-for="[name, result] in responseCards" :key="name" class="response-card">
-                <header><strong>{{ name }}</strong><span class="response-meta" :class="statusClass(result)">{{ result.error ? "Error" : `HTTP ${result.status_code}` }} · {{ result.duration_ms }} ms</span></header>
-                <pre>{{ result.error || prettyBody(result.body) }}{{ result.truncated ? "\n[Respuesta truncada a 2 MiB]" : "" }}</pre>
+                <header><strong>{{ name }}</strong><span class="response-meta" :class="statusClass(result)">{{ result.error ? t("Error") : `HTTP ${result.status_code}` }} · {{ result.duration_ms }} ms</span></header>
+                <pre>{{ result.error || prettyBody(result.body) }}{{ result.truncated ? `\n${t("[Respuesta truncada a 2 MiB]")}` : "" }}</pre>
               </article>
             </div>
           </div>
@@ -1736,66 +1758,84 @@ onMounted(async () => {
         <div v-else-if="collection" class="content-empty">
           <div class="empty-icon">⌘</div>
           <h2>{{ selectedFolder ? selectedFolder.name : collection.name }}</h2>
-          <p>Selecciona una petición o crea una nueva para empezar.</p>
+          <p>{{ t("Selecciona una petición o crea una nueva para empezar.") }}</p>
           <div class="empty-actions">
-            <button class="button primary" @click="createRequest(folderId)">＋ Nueva petición</button>
-            <button class="button secondary" @click="createFolder(folderId)">▰ Nueva carpeta</button>
+            <button class="button primary" @click="createRequest(folderId)">＋ {{ t("Nueva petición") }}</button>
+            <button class="button secondary" @click="createFolder(folderId)">▰ {{ t("Nueva carpeta") }}</button>
           </div>
         </div>
         <div v-else class="content-empty">
           <div class="empty-icon">⌘</div>
-          <h2>Tu espacio de trabajo</h2>
-          <p>Selecciona una colección o crea una nueva.</p>
-          <button class="button primary" @click="createCollection">＋ Nueva colección</button>
+          <h2>{{ t("Tu espacio de trabajo") }}</h2>
+          <p>{{ t("Selecciona una colección o crea una nueva.") }}</p>
+          <button class="button primary" @click="createCollection">＋ {{ t("Nueva colección") }}</button>
         </div>
 
         <footer class="statusbar">
-          <span><i class="online-dot"></i>Listo</span><span>{{ projectLabel }}</span>
-          <button class="icon-button theme-footer" :title="isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'" @click="toggleTheme">{{ isDark ? "☼" : "☾" }}</button>
+          <span><i class="online-dot"></i>{{ t("Listo") }}</span><span>{{ projectLabel }}</span>
+          <div class="footer-preferences">
+            <label class="language-control">
+              <span class="visually-hidden">{{ t("Idioma") }}</span>
+              <select :value="locale" :aria-label="t('Cambiar idioma')" @change="setLocale($event.target.value)">
+                <option value="es">Español</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+          <button class="icon-button theme-footer" :title="t(isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro')" @click="toggleTheme">{{ isDark ? "☼" : "☾" }}</button>
+          </div>
         </footer>
       </section>
     </div>
 
     <footer v-if="!project" class="dashboard-footer">
-      <span><span class="brand-mark mini">T</span> DiffTwin <span class="footer-muted">· Comparación de APIs</span></span>
-      <button class="icon-button theme-footer" :title="isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'" @click="toggleTheme">
-        {{ isDark ? "☼" : "☾" }}
-      </button>
+      <span><span class="brand-mark mini">T</span> DiffTwin <span class="footer-muted">{{ t("· Comparación de APIs") }}</span></span>
+      <div class="footer-preferences">
+        <label class="language-control">
+          <span class="visually-hidden">{{ t("Idioma") }}</span>
+          <select :value="locale" :aria-label="t('Cambiar idioma')" @change="setLocale($event.target.value)">
+            <option value="es">Español</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+        <button class="icon-button theme-footer" :title="t(isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro')" @click="toggleTheme">
+          {{ isDark ? "☼" : "☾" }}
+        </button>
+      </div>
     </footer>
 
     <div v-if="importConflict" class="modal-backdrop" @click.self="resolveImportConflict('cancel')">
       <section class="modal-card import-conflict-modal" role="dialog" aria-modal="true" aria-labelledby="import-conflict-title">
         <div class="modal-heading">
-          <div><div class="eyebrow">CONFLICTO DE IMPORTACIÓN</div><h2 id="import-conflict-title">El proyecto ya existe</h2></div>
-          <button type="button" class="icon-button" aria-label="Cancelar importación" @click="resolveImportConflict('cancel')">×</button>
+          <div><div class="eyebrow">{{ t("CONFLICTO DE IMPORTACIÓN") }}</div><h2 id="import-conflict-title">{{ t("El proyecto ya existe") }}</h2></div>
+          <button type="button" class="icon-button" :aria-label="t('Cancelar importación')" @click="resolveImportConflict('cancel')">×</button>
         </div>
-        <p>El archivo «{{ importConflict.importedName }}» tiene el mismo identificador que «{{ importConflict.existing.name }}». Si lo reemplazas, sus colecciones y peticiones se sustituirán por las del archivo.</p>
+        <p>{{ t("El archivo «{imported}» tiene el mismo identificador que «{existing}». Si lo reemplazas, sus colecciones y peticiones se sustituirán por las del archivo.", { imported: importConflict.importedName, existing: importConflict.existing.name }) }}</p>
         <div class="import-conflict-warning">
-          <strong>Las credenciales no se incluyen en los archivos exportados.</strong>
-          <span>Si reemplazas el proyecto, tendrás que volver a configurar su autenticación.</span>
+          <strong>{{ t("Las credenciales no se incluyen en los archivos exportados.") }}</strong>
+          <span>{{ t("Si reemplazas el proyecto, tendrás que volver a configurar su autenticación.") }}</span>
         </div>
         <div class="import-conflict-actions">
-          <button type="button" class="button secondary" @click="resolveImportConflict('cancel')">Cancelar</button>
-          <button type="button" class="button secondary" @click="resolveImportConflict('copy')">Importar como copia</button>
-          <button type="button" class="button project-import-replace" @click="resolveImportConflict('replace')">Reemplazar proyecto</button>
+          <button type="button" class="button secondary" @click="resolveImportConflict('cancel')">{{ t("Cancelar") }}</button>
+          <button type="button" class="button secondary" @click="resolveImportConflict('copy')">{{ t("Importar como copia") }}</button>
+          <button type="button" class="button project-import-replace" @click="resolveImportConflict('replace')">{{ t("Reemplazar proyecto") }}</button>
         </div>
       </section>
     </div>
 
     <div v-if="projectDialog" class="modal-backdrop" @click.self="projectDialog = false">
       <form class="modal-card" @submit.prevent="saveProject">
-        <div class="modal-heading"><div><div class="eyebrow">CONFIGURACIÓN</div><h2>{{ editingProject ? "Editar proyecto" : "Nuevo proyecto" }}</h2></div><button type="button" class="icon-button" @click="projectDialog = false">×</button></div>
-        <label class="field-label">NOMBRE<input v-model="projectForm.name" required placeholder="Mi API"></label>
-        <label class="field-label">ESTABLE PRINCIPAL<input ref="primaryProjectInput" v-model="projectForm.primary" required placeholder="https://api-stable.example"></label>
-        <label class="field-label">CANDIDATA<input ref="candidateProjectInput" v-model="projectForm.candidate" required placeholder="https://api-candidate.example"></label>
-        <label class="field-label">ESTABLE SECUNDARIA · OPCIONAL<input ref="secondaryProjectInput" v-model="projectForm.secondary" placeholder="https://api-stable-2.example"></label>
-        <label class="field-label">IGNORAR RUTAS JSON · UNA POR LÍNEA<textarea v-model="ignoredJSONPathsText" spellcheck="false" placeholder="$.meta.generatedAt&#10;$.items[*].id"></textarea></label>
-        <label class="field-label">VARIABLES · JSON<textarea v-model="projectForm.variables" placeholder="{}"></textarea></label>
+        <div class="modal-heading"><div><div class="eyebrow">{{ t("CONFIGURACIÓN") }}</div><h2>{{ t(editingProject ? "Editar proyecto" : "Nuevo proyecto") }}</h2></div><button type="button" class="icon-button" :aria-label="t('Cerrar')" @click="projectDialog = false">×</button></div>
+        <label class="field-label">{{ t("NOMBRE") }}<input v-model="projectForm.name" required :placeholder="t('Mi API')"></label>
+        <label class="field-label">{{ t("ESTABLE PRINCIPAL") }}<input ref="primaryProjectInput" v-model="projectForm.primary" required placeholder="https://api-stable.example"></label>
+        <label class="field-label">{{ t("CANDIDATA") }}<input ref="candidateProjectInput" v-model="projectForm.candidate" required placeholder="https://api-candidate.example"></label>
+        <label class="field-label">{{ t("ESTABLE SECUNDARIA · OPCIONAL") }}<input ref="secondaryProjectInput" v-model="projectForm.secondary" placeholder="https://api-stable-2.example"></label>
+        <label class="field-label">{{ t("IGNORAR RUTAS JSON · UNA POR LÍNEA") }}<textarea v-model="ignoredJSONPathsText" spellcheck="false" placeholder="$.meta.generatedAt&#10;$.items[*].id"></textarea></label>
+        <label class="field-label">{{ t("VARIABLES · JSON") }}<textarea v-model="projectForm.variables" placeholder="{}"></textarea></label>
         <div v-if="editingProject" class="danger-zone">
-          <div><strong>Eliminar proyecto</strong><p>Elimina el proyecto y todas sus colecciones y peticiones.</p></div>
-          <button type="button" class="button danger-outline" @click="deleteProject">Eliminar</button>
+          <div><strong>{{ t("Eliminar proyecto") }}</strong><p>{{ t("Elimina el proyecto y todas sus colecciones y peticiones.") }}</p></div>
+          <button type="button" class="button danger-outline" @click="deleteProject">{{ t("Eliminar") }}</button>
         </div>
-        <div class="modal-actions"><button type="button" class="button secondary" @click="projectDialog = false">Cancelar</button><button class="button primary">{{ editingProject ? "Guardar cambios" : "Crear proyecto" }}</button></div>
+        <div class="modal-actions"><button type="button" class="button secondary" @click="projectDialog = false">{{ t("Cancelar") }}</button><button class="button primary">{{ t(editingProject ? "Guardar cambios" : "Crear proyecto") }}</button></div>
       </form>
     </div>
   </div>
