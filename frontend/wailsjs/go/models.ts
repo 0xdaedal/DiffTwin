@@ -316,4 +316,23 @@ export namespace main {
 		}
 	}
 
+	export class UpdateInfo {
+	    current_version: string;
+	    latest_version: string;
+	    release_url: string;
+	    available: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new UpdateInfo(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.current_version = source["current_version"];
+	        this.latest_version = source["latest_version"];
+	        this.release_url = source["release_url"];
+	        this.available = source["available"];
+	    }
+	}
+
 }

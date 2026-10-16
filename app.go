@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -17,6 +19,10 @@ import (
 	"github.com/jrcasanya/difftwin/internal/domain"
 	"github.com/jrcasanya/difftwin/internal/storage"
 )
+
+var appVersion = "dev"
+
+const latestReleaseAPI = "https://api.github.com/repos/0xdaedal/DiffTwin/releases/latest"
 
 type App struct {
 	store       *storage.Store
@@ -48,11 +54,110 @@ type PostmanImportResult struct {
 	Warnings   []string   `json:"warnings"`
 }
 
+type UpdateInfo struct {
+	CurrentVersion string `json:"current_version"`
+	LatestVersion  string `json:"latest_version"`
+	ReleaseURL     string `json:"release_url"`
+	Available      bool   `json:"available"`
+}
+
+type githubRelease struct {
+	TagName    string `json:"tag_name"`
+	Prerelease bool   `json:"prerelease"`
+	Draft      bool   `json:"draft"`
+}
+
 func NewApp(projectStore *storage.Store) *App {
 	return &App{
 		store: projectStore, client: &http.Client{Timeout: 30 * time.Second},
 		credentials: credentials.KeyringStore{},
 	}
+}
+
+func (a *App) CheckForUpdates() (UpdateInfo, error) {
+	currentVersion := strings.TrimSpace(appVersion)
+	if currentVersion == "" || currentVersion == "dev" {
+		return UpdateInfo{CurrentVersion: "dev"}, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	return checkForUpdates(ctx, a.client, currentVersion, latestReleaseAPI)
+}
+
+func checkForUpdates(ctx context.Context, client *http.Client, currentVersion, releaseAPI string) (UpdateInfo, error) {
+	if _, err := compareReleaseVersions(currentVersion, currentVersion); err != nil {
+		return UpdateInfo{}, fmt.Errorf("versión instalada no válida: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releaseAPI, nil)
+	if err != nil {
+		return UpdateInfo{}, fmt.Errorf("crear solicitud de actualización: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "DiffTwin-Update-Checker")
+
+	response, err := client.Do(req)
+	if err != nil {
+		return UpdateInfo{}, fmt.Errorf("comprobar actualizaciones en GitHub: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return UpdateInfo{}, fmt.Errorf("GitHub respondió al comprobar actualizaciones con HTTP %d", response.StatusCode)
+	}
+
+	var release githubRelease
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&release); err != nil {
+		return UpdateInfo{}, fmt.Errorf("leer la información de la última release: %w", err)
+	}
+	if release.Draft || release.Prerelease {
+		return UpdateInfo{}, fmt.Errorf("GitHub no devolvió una release estable publicada")
+	}
+	comparison, err := compareReleaseVersions(currentVersion, release.TagName)
+	if err != nil {
+		return UpdateInfo{}, fmt.Errorf("la release de GitHub tiene una etiqueta no válida: %w", err)
+	}
+	return UpdateInfo{
+		CurrentVersion: currentVersion,
+		LatestVersion:  release.TagName,
+		ReleaseURL:     "https://github.com/0xdaedal/DiffTwin/releases/tag/" + release.TagName,
+		Available:      comparison < 0,
+	}, nil
+}
+
+func compareReleaseVersions(left, right string) (int, error) {
+	parse := func(version string) ([3]uint64, error) {
+		var parts [3]uint64
+		version = strings.TrimPrefix(version, "v")
+		fields := strings.Split(version, ".")
+		if len(fields) != len(parts) {
+			return parts, fmt.Errorf("se esperaba una versión vMAJOR.MINOR.PATCH")
+		}
+		for index, field := range fields {
+			value, err := strconv.ParseUint(field, 10, 64)
+			if err != nil {
+				return parts, fmt.Errorf("componente %q no válido: %w", field, err)
+			}
+			parts[index] = value
+		}
+		return parts, nil
+	}
+
+	leftParts, err := parse(left)
+	if err != nil {
+		return 0, err
+	}
+	rightParts, err := parse(right)
+	if err != nil {
+		return 0, err
+	}
+	for index := range leftParts {
+		switch {
+		case leftParts[index] < rightParts[index]:
+			return -1, nil
+		case leftParts[index] > rightParts[index]:
+			return 1, nil
+		}
+	}
+	return 0, nil
 }
 
 func exportProjectConfig(project Project) projectConfigExport {

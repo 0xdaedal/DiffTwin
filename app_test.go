@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -328,6 +330,67 @@ func TestProjectExportFilename(t *testing.T) {
 		if got := projectExportFilename(test.name); got != test.want {
 			t.Errorf("projectExportFilename(%q) = %q, want %q", test.name, got, test.want)
 		}
+	}
+}
+
+func TestCheckForUpdates(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		currentVersion string
+		tagName        string
+		wantAvailable  bool
+	}{
+		{name: "newer release available", currentVersion: "v0.1.1", tagName: "v0.2.0", wantAvailable: true},
+		{name: "already latest", currentVersion: "v0.2.0", tagName: "v0.2.0"},
+		{name: "installed version newer", currentVersion: "v0.3.0", tagName: "v0.2.0"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.Header.Get("Accept"); got != "application/vnd.github+json" {
+					t.Errorf("unexpected Accept header %q", got)
+				}
+				_ = json.NewEncoder(w).Encode(githubRelease{TagName: test.tagName})
+			}))
+			defer server.Close()
+
+			info, err := checkForUpdates(t.Context(), server.Client(), test.currentVersion, server.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Available != test.wantAvailable {
+				t.Fatalf("Available = %v, want %v", info.Available, test.wantAvailable)
+			}
+			if info.CurrentVersion != test.currentVersion || info.LatestVersion != test.tagName {
+				t.Fatalf("unexpected update info: %#v", info)
+			}
+			if info.ReleaseURL != "https://github.com/0xdaedal/DiffTwin/releases/tag/"+test.tagName {
+				t.Fatalf("unexpected release URL %q", info.ReleaseURL)
+			}
+		})
+	}
+}
+
+func TestCheckForUpdatesRejectsInvalidResponse(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		statusCode int
+		body       string
+	}{
+		{name: "GitHub error", statusCode: http.StatusServiceUnavailable, body: `{}`},
+		{name: "invalid version", statusCode: http.StatusOK, body: `{"tag_name":"latest"}`},
+		{name: "prerelease", statusCode: http.StatusOK, body: `{"tag_name":"v0.2.0","prerelease":true}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(test.statusCode)
+				_, _ = w.Write([]byte(test.body))
+			}))
+			defer server.Close()
+
+			if _, err := checkForUpdates(t.Context(), server.Client(), "v0.1.1", server.URL); err == nil {
+				t.Fatal("expected invalid release response to return an error")
+			}
+		})
 	}
 }
 

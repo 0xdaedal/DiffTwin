@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import * as AppBindings from "../wailsjs/go/main/App";
+import { BrowserOpenURL } from "../wailsjs/runtime/runtime.js";
 import FolderTree from "./FolderTree.vue";
 
 const backend = () => AppBindings;
@@ -20,6 +21,10 @@ const activeEditorTab = ref("params");
 const queryParams = ref([]);
 const notice = ref("");
 const errorMessage = ref("");
+const updateInfo = ref(null);
+const updateCheckError = ref("");
+const updateCheckLoading = ref(false);
+const updateNoticeDismissed = ref(false);
 const isDark = ref(getPreference("theme") !== "light");
 const projectDialog = ref(false);
 const importConflict = ref(null);
@@ -651,6 +656,22 @@ function toggleTheme() {
   setTheme(!isDark.value);
 }
 
+async function checkForUpdates() {
+  updateCheckLoading.value = true;
+  updateCheckError.value = "";
+  try {
+    updateInfo.value = await backend().CheckForUpdates();
+  } catch (error) {
+    updateCheckError.value = error.message || String(error);
+  } finally {
+    updateCheckLoading.value = false;
+  }
+}
+
+function openLatestRelease() {
+  if (updateInfo.value?.release_url) BrowserOpenURL(updateInfo.value.release_url);
+}
+
 function openProject(id) {
   projectId.value = id;
   collectionId.value = "";
@@ -1270,6 +1291,7 @@ function statusClass(item) {
 
 onMounted(async () => {
   setTheme(isDark.value);
+  void checkForUpdates();
   const savedSidebarWidth = Number(getPreference("sidebar-width"));
   if (Number.isFinite(savedSidebarWidth) && savedSidebarWidth > 0) {
     sidebarWidth.value = clampSidebarWidth(savedSidebarWidth);
@@ -1300,6 +1322,18 @@ onMounted(async () => {
       </div>
       <div v-else class="top-context">Espacio de trabajo</div>
       <div class="top-spacer"></div>
+      <div v-if="updateInfo?.available && !updateNoticeDismissed" class="update-notice">
+        <span>Nueva versión <strong>{{ updateInfo.latest_version }}</strong></span>
+        <button class="button secondary small" @click="openLatestRelease">Ver descarga</button>
+        <button class="icon-button tiny" title="Ocultar aviso" aria-label="Ocultar aviso de actualización" @click="updateNoticeDismissed = true">×</button>
+      </div>
+      <button
+        v-else-if="updateCheckError"
+        class="button quiet update-check-error"
+        :disabled="updateCheckLoading"
+        :title="updateCheckError"
+        @click="checkForUpdates"
+      >{{ updateCheckLoading ? "Comprobando…" : "No se pudo comprobar · Reintentar" }}</button>
       <template v-if="project">
         <button class="icon-button topbar-action" title="Configuración del proyecto" aria-label="Configuración del proyecto" @click="editProject">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 2.8h3l.45 1.7c.47.15.9.4 1.3.7l1.7-.55 1.5 2.6-1.25 1.25c.1.5.1 1 0 1.5l1.25 1.25-1.5 2.6-1.7-.55c-.4.3-.83.55-1.3.7l-.45 1.7h-3l-.45-1.7a5.6 5.6 0 0 1-1.3-.7l-1.7.55-1.5-2.6 1.25-1.25a4.8 4.8 0 0 1 0-1.5L3.55 7.25l1.5-2.6 1.7.55c.4-.3.83-.55 1.3-.7l.45-1.7Z"/><circle cx="10" cy="9.25" r="2.3"/></svg>
