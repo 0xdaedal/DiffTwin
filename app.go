@@ -199,6 +199,9 @@ func (a *App) SaveProjectWithAuth(project Project, credentialsByTarget map[strin
 			err = a.credentials.Delete(project.ID)
 		}
 		if err != nil {
+			if errors.Is(err, credentials.ErrTooLarge) {
+				return Project{}, fmt.Errorf("las credenciales superan el tamaño máximo admitido por el almacén seguro del sistema: %w", err)
+			}
 			return Project{}, err
 		}
 	}
