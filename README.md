@@ -160,7 +160,7 @@ These initial releases are not code-signed or notarized. Operating systems may s
 
 ## Features
 
-For step-by-step instructions on installing and using DiffTwin, see the [User Manual](docs/user-manual.md).
+For step-by-step instructions on installing and using DiffTwin, see the user manuals: [English](docs/user-manual.md) | [Español](docs/user-manual.es.md).
 
 The dashboard displays projects as cards. **Probar ejemplo** creates or opens the idempotent `Demo: comparación de APIs` project and selects its request. It calls HTTPBin, a public echo service: the primary and secondary stable destinations use the same route, while the candidate uses a different route, producing a difference at `$.url`. An internet connection is required. Do not send secrets or sensitive data to this public service.
 
