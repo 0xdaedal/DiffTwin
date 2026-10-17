@@ -39,3 +39,12 @@ test("custom dialogs use localized labels", () => {
   assert.equal(translate("en", "Limitaciones de importación"), "Import limitations");
   assert.equal(translate("en", "Aceptar"), "OK");
 });
+
+test("destination settings labels are localized", () => {
+  assert.equal(
+    translate("en", "Configuración de {destination}", { destination: "Candidate" }),
+    "Candidate settings"
+  );
+  assert.equal(translate("en", "Reglas de comparación"), "Comparison rules");
+  assert.equal(translate("en", "Sin guardar"), "Unsaved");
+});

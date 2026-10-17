@@ -37,7 +37,9 @@ const authSaving = ref(false);
 const authLoadedProjectId = ref("");
 const authLoadingProjectId = ref("");
 const authCredentialsMissing = ref(false);
+const savedAuthTargetSnapshots = ref({});
 const ignoredJSONPathsText = ref("");
+const savedIgnoredJSONPathsText = ref("");
 const destinationVariableDrafts = ref(emptyDestinationVariableDrafts());
 const primaryProjectInput = ref(null);
 const candidateProjectInput = ref(null);
@@ -144,6 +146,30 @@ const project = computed(() => projects.value.find((item) => item.id === project
 const collection = computed(() => project.value?.collections?.find((item) => item.id === collectionId.value) || null);
 const selectedFolder = computed(() => findFolder(collection.value?.folders || [], folderId.value));
 const selectedRequest = computed(() => findRequest(collection.value, requestId.value));
+const authTargetLabel = computed(() => ({
+  primary: t("Estable principal"),
+  candidate: t("Candidata"),
+  secondary: t("Estable secundaria")
+}[authTarget.value]));
+const authPanelTitle = computed(() => t("Configuración de {destination}", { destination: authTargetLabel.value }));
+const hasUnsavedComparisonOptions = computed(() => ignoredJSONPathsText.value !== savedIgnoredJSONPathsText.value);
+function authTargetSnapshot(target, auth = authForm.value.auth, credentials = authForm.value.credentials, variableDrafts = destinationVariableDrafts.value) {
+  return JSON.stringify({
+    auth: auth[target] || {},
+    credentials: credentials[target] || {},
+    variables: variableDrafts[target] || ""
+  });
+}
+const hasUnsavedAuthTarget = (target) =>
+  authLoadedProjectId.value === project.value?.id &&
+  savedAuthTargetSnapshots.value[target] !== undefined &&
+  savedAuthTargetSnapshots.value[target] !== authTargetSnapshot(target);
+const authMethodHint = computed(() => ({
+  none: t("Este destino no enviará credenciales."),
+  bearer: t("El token se enviará como una cabecera Authorization: Bearer."),
+  basic: t("El usuario y la contraseña se enviarán mediante autenticación HTTP Basic."),
+  api_key: t("La clave se enviará en la ubicación que elijas.")
+}[authForm.value.auth[authTarget.value].type || "none"]));
 const visibleCollections = computed(() => (project.value?.collections || []).filter((item) => collectionMatches(item, collectionSearch.value)));
 const projectLabel = computed(() => project.value?.name || t("Selecciona un proyecto"));
 const visibleCollectionRun = computed(() =>
@@ -722,8 +748,10 @@ async function loadProjectAuth(id) {
   authLoadedProjectId.value = "";
   authLoadingProjectId.value = id;
   authCredentialsMissing.value = false;
+  savedAuthTargetSnapshots.value = {};
   authForm.value = emptyProjectAuth();
   destinationVariableDrafts.value = emptyDestinationVariableDrafts(project.value?.destination_variables);
+  savedIgnoredJSONPathsText.value = (project.value?.ignored_json_paths || []).join("\n");
   try {
     const settings = await backend().GetProjectAuth(id);
     if (projectId.value !== id) return;
@@ -732,6 +760,12 @@ async function loadProjectAuth(id) {
     Object.assign(authForm.value.credentials, settings.credentials || {});
     authCredentialsMissing.value = settings.credentials_missing || false;
     authLoadedProjectId.value = id;
+    savedAuthTargetSnapshots.value = Object.fromEntries(
+      ["primary", "candidate", "secondary"].map((target) => [
+        target,
+        authTargetSnapshot(target)
+      ])
+    );
   } catch (error) {
     if (projectId.value === id) {
       authForm.value.auth = { ...authForm.value.auth, ...(project.value?.auth || {}) };
@@ -831,9 +865,13 @@ async function saveProjectAuth() {
   if (!project.value || authSaving.value || authLoadedProjectId.value !== project.value.id) return;
   authSaving.value = true;
   try {
+    const authToSave = JSON.parse(JSON.stringify(authForm.value.auth));
+    const credentialsToSave = JSON.parse(JSON.stringify(authForm.value.credentials));
+    const variableDraftsToSave = { ...destinationVariableDrafts.value };
+    const ignoredPathsToSave = ignoredJSONPathsText.value;
     const destinationVariables = {};
     for (const target of ["primary", "candidate", "secondary"]) {
-      const parsed = JSON.parse(destinationVariableDrafts.value[target] || "{}");
+      const parsed = JSON.parse(variableDraftsToSave[target] || "{}");
       if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object" ||
           Object.values(parsed).some((value) => typeof value !== "string")) {
         throw new Error(t("Las variables de {destination} deben ser un objeto JSON con valores de texto.", {
@@ -844,14 +882,21 @@ async function saveProjectAuth() {
     }
     const saved = await backend().SaveProjectWithAuth({
       ...JSON.parse(JSON.stringify(project.value)),
-      auth: authForm.value.auth,
-      ignored_json_paths: ignoredJSONPathsText.value.split(/\r?\n/).map((path) => path.trim()).filter(Boolean),
+      auth: authToSave,
+      ignored_json_paths: ignoredPathsToSave.split(/\r?\n/).map((path) => path.trim()).filter(Boolean),
       destination_variables: destinationVariables
-    }, authForm.value.credentials);
+    }, credentialsToSave);
     await refreshProjects();
     if (projectId.value !== saved.id) return;
     authLoadedProjectId.value = saved.id;
     authCredentialsMissing.value = false;
+    savedIgnoredJSONPathsText.value = ignoredPathsToSave;
+    savedAuthTargetSnapshots.value = Object.fromEntries(
+      ["primary", "candidate", "secondary"].map((target) => [
+        target,
+        authTargetSnapshot(target, authToSave, credentialsToSave, variableDraftsToSave)
+      ])
+    );
     response.value = null;
     flash(t("Opciones guardadas."));
   } catch (error) {
@@ -1688,84 +1733,98 @@ onMounted(async () => {
             </button>
           </div>
         </section>
-        <div class="target-strip" :class="{ 'target-strip-two': !project.secondary }">
-          <button type="button" class="target-chip target-chip-button" :aria-label="t('Editar estable principal')" @click="editProject('primary')">
-            <i class="target-dot stable"></i><span class="target-chip-content"><span>{{ t("ESTABLE PRINCIPAL") }}</span><strong>{{ project.primary }}</strong></span>
+        <div class="target-strip" :class="{ 'target-strip-two': !project.secondary }" role="group" :aria-label="t('Destino para configurar')">
+          <button type="button" class="target-chip target-chip-button" :class="{ selected: authTarget === 'primary' }" :aria-pressed="authTarget === 'primary'" :aria-label="`${t('Configurar autenticación de estable principal')}${hasUnsavedAuthTarget('primary') ? ` · ${t('Sin guardar')}` : ''}`" @click="setAuthTarget('primary')">
+            <i class="target-dot stable"></i><span class="target-chip-content"><span>{{ t("ESTABLE PRINCIPAL") }}</span><strong>{{ project.primary }}</strong><small v-if="hasUnsavedAuthTarget('primary')" class="target-pending">{{ t("Sin guardar") }}</small></span><span v-if="authTarget === 'primary'" class="auth-target-check">✓</span>
           </button>
-          <button type="button" class="target-chip target-chip-button" :aria-label="t('Editar candidata')" @click="editProject('candidate')">
-            <i class="target-dot candidate"></i><span class="target-chip-content"><span>{{ t("CANDIDATA") }}</span><strong>{{ project.candidate }}</strong></span>
+          <button type="button" class="target-chip target-chip-button" :class="{ selected: authTarget === 'candidate' }" :aria-pressed="authTarget === 'candidate'" :aria-label="`${t('Configurar autenticación de candidata')}${hasUnsavedAuthTarget('candidate') ? ` · ${t('Sin guardar')}` : ''}`" @click="setAuthTarget('candidate')">
+            <i class="target-dot candidate"></i><span class="target-chip-content"><span>{{ t("CANDIDATA") }}</span><strong>{{ project.candidate }}</strong><small v-if="hasUnsavedAuthTarget('candidate')" class="target-pending">{{ t("Sin guardar") }}</small></span><span v-if="authTarget === 'candidate'" class="auth-target-check">✓</span>
           </button>
-          <button v-if="project.secondary" type="button" class="target-chip target-chip-button" :aria-label="t('Editar estable secundaria')" @click="editProject('secondary')">
-            <i class="target-dot stable"></i><span class="target-chip-content"><span>{{ t("ESTABLE SECUNDARIA") }}</span><strong>{{ project.secondary }}</strong></span>
+          <button v-if="project.secondary" type="button" class="target-chip target-chip-button" :class="{ selected: authTarget === 'secondary' }" :aria-pressed="authTarget === 'secondary'" :aria-label="`${t('Configurar autenticación de estable secundaria')}${hasUnsavedAuthTarget('secondary') ? ` · ${t('Sin guardar')}` : ''}`" @click="setAuthTarget('secondary')">
+            <i class="target-dot stable"></i><span class="target-chip-content"><span>{{ t("ESTABLE SECUNDARIA") }}</span><strong>{{ project.secondary }}</strong><small v-if="hasUnsavedAuthTarget('secondary')" class="target-pending">{{ t("Sin guardar") }}</small></span><span v-if="authTarget === 'secondary'" class="auth-target-check">✓</span>
           </button>
         </div>
-        <details class="workspace-auth">
+        <details class="workspace-auth" open>
           <summary class="workspace-auth-summary">
-            <span><strong>{{ t("Configuración de destinos") }}</strong><small>{{ t("Autenticación, variables y opciones de comparación") }}</small></span>
-            <span class="settings-toggle">{{ t("Configurar") }} <span aria-hidden="true">⌄</span></span>
+            <strong>{{ authPanelTitle }}</strong>
+            <span v-if="hasUnsavedAuthTarget(authTarget)" class="auth-unsaved-badge">{{ t("Sin guardar") }}</span>
+            <span class="settings-toggle" aria-hidden="true"><span>⌄</span></span>
           </summary>
           <div class="workspace-auth-content">
-          <div class="workspace-auth-heading">
-            <div><strong>{{ t("Autenticación y opciones") }}</strong><span>{{ t("Configura credenciales y opciones por proyecto.") }}</span></div>
-            <button class="button primary small" :disabled="authSaving || authLoadedProjectId !== project.id" @click="saveProjectAuth">
-              {{ authSaving ? t("Guardando…") : t("Guardar opciones") }}
-            </button>
-          </div>
-          <div class="auth-target-tabs">
-            <button type="button" class="button small" :class="authTarget === 'primary' ? 'primary' : 'secondary'" @click="setAuthTarget('primary')">{{ t("Estable principal") }}</button>
-            <button type="button" class="button small" :class="authTarget === 'candidate' ? 'primary' : 'secondary'" @click="setAuthTarget('candidate')">{{ t("Candidata") }}</button>
-            <button v-if="project.secondary" type="button" class="button small" :class="authTarget === 'secondary' ? 'primary' : 'secondary'" @click="setAuthTarget('secondary')">{{ t("Estable secundaria") }}</button>
-          </div>
-          <p v-if="authLoadingProjectId === project.id" class="auth-storage-note">{{ t("Cargando autenticación…") }}</p>
-          <div class="workspace-auth-fields">
-            <label class="field-label">{{ t("MÉTODO") }}
-              <select :value="authForm.auth[authTarget].type || 'none'" @change="setAuthType($event.target.value)">
-                <option value="none">{{ t("Sin autenticación") }}</option>
-                <option value="bearer">Bearer</option>
-                <option value="basic">Basic</option>
-                <option value="api_key">API key</option>
-              </select>
-            </label>
-            <template v-if="authForm.auth[authTarget].type === 'bearer'">
-              <label class="field-label">{{ t("TOKEN") }}<input v-model="authForm.credentials[authTarget].token" type="password" autocomplete="new-password" required></label>
-            </template>
-            <template v-else-if="authForm.auth[authTarget].type === 'basic'">
-              <label class="field-label">{{ t("USUARIO") }}<input v-model="authForm.credentials[authTarget].username" autocomplete="off"></label>
-              <label class="field-label">{{ t("CONTRASEÑA") }}<input v-model="authForm.credentials[authTarget].password" type="password" autocomplete="new-password" required></label>
-            </template>
-            <template v-else-if="authForm.auth[authTarget].type === 'api_key'">
-              <label class="field-label">{{ t("NOMBRE DE LA CLAVE") }}<input v-model="authForm.auth[authTarget].api_key_name" required placeholder="X-API-Key"></label>
-              <label class="field-label">{{ t("ENVIAR EN") }}
-                <select v-model="authForm.auth[authTarget].api_key_location">
-                  <option value="header">Header</option>
-                  <option value="query">{{ t("Parámetro de consulta") }}</option>
+          <section class="auth-configuration">
+            <p v-if="authLoadingProjectId === project.id" class="auth-storage-note">{{ t("Cargando autenticación…") }}</p>
+            <div class="auth-method-row">
+              <label class="field-label">{{ t("MÉTODO DE AUTENTICACIÓN") }}
+                <select :value="authForm.auth[authTarget].type || 'none'" @change="setAuthType($event.target.value)">
+                  <option value="none">{{ t("Sin autenticación") }}</option>
+                  <option value="bearer">Bearer</option>
+                  <option value="basic">Basic</option>
+                  <option value="api_key">API key</option>
                 </select>
               </label>
-              <label class="field-label">{{ t("VALOR") }}<input v-model="authForm.credentials[authTarget].api_key" type="password" autocomplete="new-password" required></label>
-            </template>
-          </div>
-          <label class="field-label destination-variables-field">{{ t("VARIABLES ESPECÍFICAS · JSON") }}
-            <textarea
-              v-model="destinationVariableDrafts[authTarget]"
-              spellcheck="false"
-              placeholder='{ "region": "eu-west", "userId": "123" }'
-            ></textarea>
-          </label>
-          <p class="auth-storage-note">{{ t("Estas variables sobrescriben las comunes solo para este destino; las demás conservan el valor común. Se guardan en el JSON del proyecto sin cifrar: no pongas secretos aquí.") }}</p>
-          <p v-if="authForm.auth[authTarget].type === 'api_key' && authForm.auth[authTarget].api_key_location === 'query'" class="auth-security-warning">
-            {{ t("Las claves en la URL pueden quedar en registros del servidor o de proxies. Usa Header si la API lo admite.") }}
-          </p>
-          <p v-if="authCredentialsMissing" class="auth-security-warning">{{ t("Faltan credenciales guardadas en el sistema. Vuelve a introducirlas para este proyecto.") }}</p>
-          <p v-if="authLoadedProjectId !== project.id && authLoadingProjectId !== project.id" class="auth-security-warning">{{ t("No se pudieron cargar las credenciales seguras. Comprueba que el almacén del sistema esté disponible.") }}</p>
-          <div class="comparison-settings">
-            <label class="field-label">{{ t("IGNORAR RUTAS JSON · UNA POR LÍNEA") }}
-              <textarea v-model="ignoredJSONPathsText" spellcheck="false" placeholder="$.meta.generatedAt&#10;$.items[*].id"></textarea>
-            </label>
-            <p>{{ t("Admite rutas como $.meta.timestamp, $[\"campo.con.puntos\"] y comodines *. Guardar autenticación también guarda estas opciones.") }}</p>
-          </div>
-          <p class="auth-storage-note">{{ t("Las credenciales se guardan en el almacén seguro del sistema y no se incluyen en la configuración JSON del proyecto.") }}</p>
+              <p class="auth-method-hint">{{ authMethodHint }}</p>
+            </div>
+            <div class="workspace-auth-fields">
+              <template v-if="authForm.auth[authTarget].type === 'bearer'">
+                <label class="field-label">{{ t("TOKEN") }}<input v-model="authForm.credentials[authTarget].token" type="password" autocomplete="new-password" required></label>
+              </template>
+              <template v-else-if="authForm.auth[authTarget].type === 'basic'">
+                <label class="field-label">{{ t("USUARIO") }}<input v-model="authForm.credentials[authTarget].username" autocomplete="off"></label>
+                <label class="field-label">{{ t("CONTRASEÑA") }}<input v-model="authForm.credentials[authTarget].password" type="password" autocomplete="new-password" required></label>
+              </template>
+              <template v-else-if="authForm.auth[authTarget].type === 'api_key'">
+                <label class="field-label">{{ t("NOMBRE DE LA CLAVE") }}<input v-model="authForm.auth[authTarget].api_key_name" required placeholder="X-API-Key"></label>
+                <label class="field-label">{{ t("ENVIAR EN") }}
+                  <select v-model="authForm.auth[authTarget].api_key_location">
+                    <option value="header">Header</option>
+                    <option value="query">{{ t("Parámetro de consulta") }}</option>
+                  </select>
+                </label>
+                <label class="field-label">{{ t("VALOR") }}<input v-model="authForm.credentials[authTarget].api_key" type="password" autocomplete="new-password" required></label>
+              </template>
+            </div>
+            <p v-if="authForm.auth[authTarget].type === 'api_key' && authForm.auth[authTarget].api_key_location === 'query'" class="auth-security-warning">
+              {{ t("Las claves en la URL pueden quedar en registros del servidor o de proxies. Usa Header si la API lo admite.") }}
+            </p>
+            <p v-if="authCredentialsMissing" class="auth-security-warning">{{ t("Faltan credenciales guardadas en el sistema. Vuelve a introducirlas para este proyecto.") }}</p>
+            <p v-if="authLoadedProjectId !== project.id && authLoadingProjectId !== project.id" class="auth-security-warning">{{ t("No se pudieron cargar las credenciales seguras. Comprueba que el almacén del sistema esté disponible.") }}</p>
+            <p class="auth-storage-note auth-storage-note-emphasis">🔒 {{ t("Las credenciales se guardan en el almacén seguro del sistema y no se incluyen en la configuración JSON del proyecto.") }}</p>
+          </section>
+          <details class="advanced-settings">
+            <summary><span><strong>{{ t("Variables del destino") }}</strong><small>{{ t("Variables específicas de este destino") }}</small></span><span class="advanced-settings-toggle">⌄</span></summary>
+            <div class="advanced-settings-content">
+              <label class="field-label destination-variables-field">{{ t("VARIABLES ESPECÍFICAS · JSON") }}
+                <textarea
+                  v-model="destinationVariableDrafts[authTarget]"
+                  spellcheck="false"
+                  placeholder='{ "region": "eu-west", "userId": "123" }'
+                ></textarea>
+              </label>
+              <p class="auth-storage-note">{{ t("Estas variables sobrescriben las comunes solo para este destino; las demás conservan el valor común. Se guardan en el JSON del proyecto sin cifrar: no pongas secretos aquí.") }}</p>
+            </div>
+          </details>
           </div>
         </details>
+        <details class="comparison-rules">
+          <summary class="workspace-auth-summary">
+            <strong>{{ t("Reglas de comparación") }}</strong>
+            <span v-if="hasUnsavedComparisonOptions" class="auth-unsaved-badge">{{ t("Sin guardar") }}</span>
+            <span class="settings-toggle" aria-hidden="true"><span>⌄</span></span>
+          </summary>
+          <div class="comparison-rules-content">
+            <div class="comparison-settings">
+              <label class="field-label">{{ t("IGNORAR RUTAS JSON · UNA POR LÍNEA") }}
+                <textarea v-model="ignoredJSONPathsText" spellcheck="false" placeholder="$.meta.generatedAt&#10;$.items[*].id"></textarea>
+              </label>
+              <p>{{ t("Admite rutas como $.meta.timestamp, $[\"campo.con.puntos\"] y comodines *. Guardar configuración también guarda estas opciones.") }}</p>
+            </div>
+          </div>
+        </details>
+        <div class="workspace-settings-footer">
+          <button class="button primary small" :disabled="authSaving || authLoadedProjectId !== project.id" @click="saveProjectAuth">
+            {{ authSaving ? t("Guardando…") : t("Guardar configuración") }}
+          </button>
+        </div>
 
         <section v-if="selectedRequest" class="request-editor">
           <div class="request-sticky">
