@@ -1,209 +1,46 @@
 # DiffTwin
 
-DiffTwin is a desktop application for organizing HTTP requests and comparing two or three API destinations. A primary stable destination and a candidate are required; an optional secondary stable destination helps identify response noise. It is built with Go and Wails, with a Vue 3 and Vite frontend.
+**Compare API responses across environments from a desktop workspace.**
 
-For project context when resuming work in another session or on another machine, see [HANDOFF.md](HANDOFF.md).
+DiffTwin helps teams check whether a candidate API behaves like a stable environment. Organize requests into projects, collections, and folders; run them against two or three destinations; and inspect response differences side by side.
 
-## Requirements
+![DiffTwin workspace comparing responses across three API destinations](docs/images/user-manual/response-comparison.png)
 
-- Go 1.27.2.
-- Node.js 20 or later and npm to modify or rebuild the frontend.
-- Platform-specific Wails dependencies:
-  - **Linux (Ubuntu/Debian):** `build-essential`, `pkg-config`, `libgtk-3-dev`, and WebKitGTK. Ubuntu 24.04 uses WebKitGTK 4.1; install `libwebkit2gtk-4.1-dev` and pass the `webkit2_41` build tag. On distributions with WebKitGTK 4.0, omit that tag.
-  - **macOS:** Xcode Command Line Tools (`xcode-select --install`).
-  - **Windows:** WebView2 Runtime and a C/C++ compiler supported by Wails, such as MSYS2/MinGW-w64.
+[Download the latest release](https://github.com/0xdaedal/DiffTwin/releases/latest) · [User manual (English)](docs/user-manual.md) · [Manual de usuario (español)](docs/user-manual.es.md)
 
-See the [official Wails v2 installation requirements](https://wails.io/docs/gettingstarted/installation) for platform-specific setup. Run `wails doctor` to diagnose missing dependencies.
+## Why DiffTwin?
 
-## VS Code Dev Containers
+- **Compare two or three destinations.** A primary stable and candidate destination are required. Add a secondary stable destination to identify differences that already exist between stable instances.
+- **Inspect what changed.** Compare HTTP status, headers, and response bodies. JSON object key order is normalized, and differences are reported by JSON path.
+- **Reduce noisy diffs.** Ignore exact or wildcard JSON paths, and compare the two stable responses to distinguish existing environment noise from candidate changes.
+- **Keep API work organized.** Group requests into collections and nested folders, search the workspace, and run a collection sequentially.
+- **Reuse existing collections.** Import Postman v2.0 and v2.1 collections, including supported folders, requests, and collection variables.
+- **Configure authentication per destination.** Use Bearer, Basic, or API key authentication. Secrets are stored in the operating system's credential store, not in project files.
+- **Use variables safely.** Share project variables and override them for individual destinations. Project variables are plain JSON; do not put secrets in them.
 
-The `.devcontainer/` configuration provides a reproducible Linux environment with Go 1.27.2, Node.js 20, Wails v2.16.0, and the dependencies for Linux builds. It works with VS Code's **Dev Containers** extension and Docker Desktop/Engine on Linux, Windows, or macOS:
+## Get started
 
-1. Clone the repository and open it in VS Code:
+1. Download the archive for your operating system from the [latest release](https://github.com/0xdaedal/DiffTwin/releases/latest).
+2. Extract the archive and launch DiffTwin.
+3. Select **New project**, enter the base URLs for your primary stable and candidate environments, and optionally add a secondary stable URL.
+4. Create a collection and request, then select **Send** to compare the configured destinations.
 
-   ```sh
-   git clone https://github.com/jrcasanya/DiffTwin.git
-   code DiffTwin
-   ```
+For screenshots and step-by-step instructions—including authentication, Postman import, comparison rules, export, and project deletion—see the [English manual](docs/user-manual.md) or [Spanish manual](docs/user-manual.es.md).
 
-2. Run **Dev Containers: Reopen in Container** from the Command Palette.
-3. Wait for Go, Node.js, Wails CLI, and project dependencies to be installed. Use the container to edit, run tests, build the frontend, and build the Linux app:
+> [!NOTE]
+> Downloads are not code-signed or notarized. Your operating system may show a security warning when opening the app.
 
-   ```sh
-   go test -count=1 -race -tags ci ./...
-   go vet -tags ci ./...
-   npm --prefix frontend run build
-   wails build -tags webkit2_41
-   ```
+## Privacy and project data
 
-The container is Linux regardless of whether VS Code runs on Windows or macOS. It does not forward the desktop window or provide access to the host's secure credential store. Use the host system to interact with the GUI, test its native credential store, or build native Windows/macOS binaries. The Dev Container is optional; you can also follow the native workflow below.
+Authentication secrets are stored in the operating system's secure credential store (Secret Service on Linux, Keychain on macOS, or Credential Manager on Windows). They are not written to project JSON and are not included when importing or exporting a project. Configure credentials again on each machine.
 
-## Native development workflow
+Project settings, variables, request headers, and bodies are stored as unencrypted JSON in the user's configuration directory. Do not store secrets in these fields. API keys sent as query parameters may be recorded by servers or proxies; prefer headers when the API allows them.
 
-Choose either the **Dev Container** or the **native host** workflow. Both use the same project folder; avoid maintaining separate working copies for editing and testing.
+The **Try example** action sends requests to HTTPBin, a public echo service, and requires an internet connection. Do not send private data or credentials to it.
 
-### Prepare the project
+## For developers
 
-Clone the repository and enter its folder:
-
-```sh
-git clone https://github.com/jrcasanya/DiffTwin.git
-cd DiffTwin
-```
-
-Install Go 1.27.2 and Node.js 20 or later if they are not already installed. Install frontend dependencies and the Wails v2.16.0 CLI:
-
-```sh
-npm ci --prefix frontend
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
-```
-
-Ensure `wails` is on `PATH`: `$HOME/go/bin` on macOS/Linux or `%USERPROFILE%\go\bin` on Windows.
-
-### Platform-specific setup and commands
-
-#### Linux (Ubuntu/Debian)
-
-Install native dependencies:
-
-```sh
-sudo apt update
-sudo apt install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
-```
-
-Install Go 1.27.2 and Node.js 20 or later from their official download pages; distribution packages may be older.
-
-Run the app with hot reload during development:
-
-```sh
-wails dev -tags webkit2_41
-```
-
-Run a normal desktop build using the embedded frontend assets:
-
-```sh
-go run -tags 'production webkit2_41' .
-```
-
-If your distribution uses WebKitGTK 4.0, omit `webkit2_41` from Wails commands.
-
-#### macOS
-
-Install the Xcode Command Line Tools once:
-
-```sh
-xcode-select --install
-```
-
-Then run the app with hot reload:
-
-```sh
-wails dev
-```
-
-#### Windows (PowerShell)
-
-Install Go 1.27.2, Node.js 20 or later, WebView2 Runtime if it is not already installed, and MSYS2/MinGW-w64 as required by the [official Wails installation guide](https://wails.io/docs/gettingstarted/installation). Ensure `go`, `npm`, and `wails` are on `PATH`; if `wails` is not found, add `%USERPROFILE%\go\bin` to the user `Path` and open a new terminal.
-
-Run the app with hot reload:
-
-```powershell
-wails dev
-```
-
-### Iterate, test, and stop
-
-1. Create a branch for your change (`git switch -c your-change`) and edit Go code and/or files under `frontend/src`.
-2. Keep `wails dev` running in its terminal while developing the backend or UI. The app reloads changes; close its window when you finish interacting with it.
-3. Stop a foreground development command by returning to its terminal and pressing **Ctrl+C**. If you started Vite manually (`npm run dev --prefix frontend`), stop that terminal too. Close the app window to stop a normal app run.
-4. Validate the backend and frontend:
-
-   ```sh
-   go test -count=1 -tags ci ./...
-   go vet -tags ci ./...
-   npm --prefix frontend run build
-   npm test --prefix frontend
-   npm exec --prefix frontend -- playwright install chromium
-   npm run test:e2e --prefix frontend
-   ```
-
-   La suite E2E de Playwright inicia el frontend y simula el puente Wails para verificar la interfaz sin abrir la aplicación de escritorio. Instala Chromium una sola vez antes de ejecutarla por primera vez.
-
-   On Linux or in the Dev Container, you can also run `go test -count=1 -race -tags ci ./...`. On Windows, the race detector requires a compatible C compiler.
-
-5. Test the desktop GUI with `wails dev` on the system where you intend to use it. **Probar ejemplo** exercises the app without real credentials.
-6. Review the changes with `git diff`. Ensure they contain no secrets or local project data before committing and pushing. Never commit project JSON files or personal credentials.
-
-To disconnect VS Code from the container, run **Dev Containers: Reopen Folder Locally** or **Close Remote Connection** from the Command Palette. This disconnects VS Code but does not stop host applications or terminals. To stop a still-running container, stop it from Docker Desktop or use Docker Engine.
-
-Build native executables on their target operating systems: run `wails build` on macOS or Windows; on Ubuntu 24.04, run `wails build -tags webkit2_41`. Installer generation and automated signing/notarization are not configured yet.
-
-## GitHub Actions and releases
-
-Pull requests to `main` and pushes to `main` run Go tests, `go vet`, and the frontend production build. Pushing a stable version tag in `vMAJOR.MINOR.PATCH` format (for example, `v1.2.3`) runs the same validation, then builds native artifacts on Linux, Windows, and macOS runners. After all builds succeed, the workflow publishes a GitHub Release with:
-
-- `difftwin-linux-amd64.tar.gz` containing the Linux executable.
-- `difftwin-windows-amd64.zip` containing the Windows executable.
-- `difftwin-macos-universal.zip` containing a universal Intel/Apple Silicon `.app`.
-- `SHA256SUMS` for verifying the downloaded archives.
-
-To publish a release, first ensure the desired commit is on `main`, then create and push a version tag:
-
-```sh
-git switch main
-git pull --ff-only
-git tag -a v1.2.3 -m "DiffTwin v1.2.3"
-git push origin v1.2.3
-```
-
-These initial releases are not code-signed or notarized. Operating systems may show security warnings when opening downloaded apps; do not treat a successful build as a signed, trusted distribution.
-
-## Features
-
-For step-by-step instructions on installing and using DiffTwin, see the user manuals: [English](docs/user-manual.md) | [Español](docs/user-manual.es.md).
-
-The dashboard displays projects as cards. **Probar ejemplo** creates or opens the idempotent `Demo: comparación de APIs` project and selects its request. It calls HTTPBin, a public echo service: the primary and secondary stable destinations use the same route, while the candidate uses a different route, producing a difference at `$.url`. An internet connection is required. Do not send secrets or sensitive data to this public service.
-
-Projects contain collections, nested folders, and requests. Drag requests or folders onto a folder or collection in the workspace tree to move them, including between collections in the same project. Run a whole collection sequentially in its displayed order; DiffTwin shows progress and per-request outcomes, continues after individual failures, and lets you open each completed comparison. Each request still runs against its configured destinations in parallel. Authentication is configured independently for the primary stable, candidate, and optional secondary stable destinations: none, Bearer, Basic, or API key in a header/query parameter. The request editor has Params, Headers, and Body tabs; query parameters can be edited in a table or directly in the URL.
-
-DiffTwin compares HTTP status codes, response headers, and bodies, normalizing JSON object key order. Date, content-length, and hop-by-hop headers are excluded because they commonly vary by transport or formatting; `CF-Ray`, Cloudflare's per-request identifier, is also excluded. Other headers such as `NEL` and `Report-To` are compared because they may contain meaningful server configuration. Latency is shown for context but does not affect the verdict.
-
-Project options can exclude exact or wildcard JSON paths (`$.meta.generatedAt`, `$.items[*].id`, `$["field.with.dots"]`); array indexes are preserved when values are excluded. When the two stable responses differ, their paths and values are also shown to help distinguish noise from candidate changes. Shared variables can be overridden per destination; destination values take precedence and unspecified values fall back to shared variables. `{{name}}` interpolation applies to paths, query parameters, headers, and bodies.
-
-Postman v2.0/v2.1 collections can be imported from the workspace. Nested folders, methods, paths/query, headers, raw bodies, and collection variables are retained. Postman hosts are discarded in favor of the project's configured destinations. Variable conflicts preserve existing values, and unsupported scripts, collection authentication, and body formats are reported.
-
-## Data and credentials
-
-Each project is stored as a JSON file in the user's configuration directory (for example, `~/.config/DiffTwin/projects/` on Linux). `DIFFTWIN_DATA` selects a custom path; `DIFFBENCH_DATA` remains supported for compatibility. If the previous DiffBench data directory exists, DiffTwin reuses it to preserve existing projects. Secure credentials remain accessible through the existing system credential-store service name.
-
-If the selected data path points to a legacy JSON file, data is migrated to a sibling directory with the `.d` suffix. The original file remains as a backup, and a marker prevents deleted projects from being restored. Projects can also be imported from the dashboard.
-
-Desde el panel se pueden exportar y eliminar proyectos. La exportación permite elegir el nombre y la ubicación del archivo JSON y muestra la ruta donde se guardó. Si el proyecto importado ya existe, se puede reemplazar, importar como copia o cancelar. Reemplazar elimina las credenciales guardadas para ese proyecto; los archivos de proyecto no las incluyen. Al eliminar un proyecto también se borran sus colecciones, peticiones y credenciales, previa confirmación.
-
-Authentication secrets are stored in the operating system's credential store (Secret Service on Linux, Keychain on macOS, or Credential Manager on Windows). They are not written to project JSON or included when importing or exporting a project; configure them again on each machine. Saving or executing authenticated requests fails explicitly if the credential store is unavailable. Variables, request headers, and other project data are stored unencrypted in JSON. API keys in query parameters may be recorded by servers or proxies; prefer headers when the API allows them.
-
-The light/dark theme preference is stored in the frontend's local storage.
-
-## Code layout
-
-- `internal/domain`: models, validation, and collection/folder operations.
-- `internal/comparison`: parallel HTTP requests and response comparison.
-- `internal/credentials`: operating-system credential-store access.
-- `internal/storage`: JSON persistence and migration.
-- `app.go`: Wails-exposed methods and application use-case coordination.
-- `frontend/src`: Vue interface; `frontend/dist` contains assets embedded in the desktop executable.
-- `main.go`: Wails startup and legacy HTTP handlers retained for compatibility/tests.
-
-Internal packages use concrete dependencies where sufficient; interfaces will be added when there is a real need for decoupling.
-
-## Testing without native WebKit
-
-In CI environments without WebKit/GTK, use the `ci` build tag to replace only the graphical startup:
-
-```sh
-go test -count=1 -race -tags ci ./...
-go vet -tags ci ./...
-```
+DiffTwin is built with Go, Wails, Vue 3, and Vite. The [development guide](docs/development.md) covers prerequisites, native and Dev Container setup, tests, builds, CI, and releases.
 
 ## License
 
