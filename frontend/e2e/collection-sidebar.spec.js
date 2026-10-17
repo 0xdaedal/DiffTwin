@@ -123,6 +123,56 @@ test("busca una petición y la abre desde la colección", async ({ page }) => {
   await expect(page.locator(".url-input")).toHaveValue("/users?page=1");
 });
 
+test("mantiene independientes el scroll del árbol y el editor principal", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 650 });
+  await page.addInitScript(() => {
+    const collection = window.__difftwinTestState.projects[0].collections[0];
+    collection.requests.push(...Array.from({ length: 45 }, (_, index) => ({
+      id: `request-extra-${index}`,
+      name: `Petición adicional ${index}`,
+      method: "GET",
+      path: `/additional/${index}`,
+      headers: {},
+      body: ""
+    })));
+    const primary = Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`value${index}`, index]));
+    const candidate = Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`value${index}`, index + 1]));
+    window.__difftwinTestState.runResponse = {
+      primary: { status_code: 200, duration_ms: 20, body: JSON.stringify(primary), error: "", truncated: false },
+      candidate: { status_code: 200, duration_ms: 24, body: JSON.stringify(candidate), error: "", truncated: false },
+      secondary_enabled: false,
+      candidate_differs: true
+    };
+  });
+  await page.goto("/");
+  await page.locator(".project-card-open").click();
+  await page.getByRole("button", { name: "Expandir colección" }).click();
+  await page.getByRole("button", { name: "Listar usuarios" }).click();
+  await page.getByRole("button", { name: /Enviar/ }).click();
+
+  const tree = page.locator(".collection-tree");
+  const editor = page.locator(".request-editor");
+  await expect(page.locator(".diff-panel .diff-row:not(.diff-column-head)")).toHaveCount(100);
+  const dimensions = await page.evaluate(() => ({
+    viewportHeight: window.innerHeight,
+    documentHeight: document.documentElement.scrollHeight,
+    treeClientHeight: document.querySelector(".collection-tree").clientHeight,
+    treeScrollHeight: document.querySelector(".collection-tree").scrollHeight,
+    editorClientHeight: document.querySelector(".request-editor").clientHeight,
+    editorScrollHeight: document.querySelector(".request-editor").scrollHeight
+  }));
+  expect(dimensions.documentHeight).toBe(dimensions.viewportHeight);
+  expect(dimensions.treeScrollHeight).toBeGreaterThan(dimensions.treeClientHeight);
+  expect(dimensions.editorScrollHeight).toBeGreaterThan(dimensions.editorClientHeight);
+
+  await editor.evaluate((element) => { element.scrollTop = 200; });
+  await expect.poll(() => editor.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect.poll(() => tree.evaluate((element) => element.scrollTop)).toBe(0);
+  await tree.evaluate((element) => { element.scrollTop = 200; });
+  await expect.poll(() => tree.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect.poll(() => editor.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});
+
 test("guarda la edición de parámetros desde el editor de peticiones", async ({ page }) => {
   await page.goto("/");
   await page.locator(".project-card-open").click();
