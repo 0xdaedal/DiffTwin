@@ -15,13 +15,13 @@ Las capturas de esta guía usan direcciones reservadas `.example` y respuestas i
 - [Instalar y abrir DiffTwin](#1-instalar-y-abrir-difftwin)
 - [Crear un proyecto](#2-crear-un-proyecto)
 - [Organizar peticiones](#3-organizar-peticiones)
-- [Configurar la autenticación](#4-configurar-la-autenticacion)
+- [Configurar la autenticación](#4-configurar-la-autenticaci%C3%B3n)
 - [Comparar respuestas](#5-comparar-respuestas)
-- [Ejecutar una colección](#6-ejecutar-una-coleccion)
-- [Importar una colección de Postman](#7-importar-una-coleccion-de-postman)
+- [Ejecutar una colección](#6-ejecutar-una-colecci%C3%B3n)
+- [Importar una colección de Postman](#7-importar-una-colecci%C3%B3n-de-postman)
 - [Importar, exportar o eliminar un proyecto](#8-importar-exportar-o-eliminar-un-proyecto)
 - [Probar el ejemplo](#9-probar-el-ejemplo)
-- [Solución de problemas](#10-solucion-de-problemas)
+- [Solución de problemas](#10-soluci%C3%B3n-de-problemas)
 - [Datos y privacidad del proyecto](#11-datos-y-privacidad-del-proyecto)
 
 ## 1. Instalar y abrir DiffTwin
