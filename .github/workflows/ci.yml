@@ -40,6 +40,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --prefix frontend
 
+      - name: Install Playwright browser
+        run: npm exec --prefix frontend -- playwright install --with-deps chromium
+
       - name: Test Go packages
         run: go test -count=1 -race -tags ci ./...
 
@@ -48,3 +51,9 @@ jobs:
 
       - name: Build frontend
         run: npm run build --prefix frontend
+
+      - name: Test frontend
+        run: npm test --prefix frontend
+
+      - name: Test frontend end-to-end
+        run: npm run test:e2e --prefix frontend

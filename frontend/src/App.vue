@@ -1,8 +1,11 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import * as AppBindings from "../wailsjs/go/main/App";
-import FolderTree from "./FolderTree.vue";
+import CollectionSidebar from "./CollectionSidebar.vue";
+import DestinationSettings from "./DestinationSettings.vue";
+import RequestEditor from "./RequestEditor.vue";
 import { detectLocale, translate } from "./i18n";
+import { useProjectAuthentication } from "./useProjectAuthentication";
 
 const backend = () => AppBindings;
 const projects = ref([]);
@@ -12,13 +15,11 @@ const projectId = ref("");
 const collectionId = ref("");
 const folderId = ref("");
 const requestId = ref("");
-const requestPath = ref("");
+const requestEditorResetKey = ref(0);
 const response = ref(null);
 const busy = ref(false);
 const collectionRunning = ref(false);
 const collectionRun = ref(null);
-const activeEditorTab = ref("params");
-const queryParams = ref([]);
 const notice = ref("");
 const errorMessage = ref("");
 const appDialog = ref(null);
@@ -31,32 +32,16 @@ const projectDialog = ref(false);
 const importConflict = ref(null);
 const editingProject = ref(null);
 const projectForm = ref(emptyProject());
-const authTarget = ref("primary");
-const authForm = ref(emptyProjectAuth());
-const authSaving = ref(false);
-const authLoadedProjectId = ref("");
-const authLoadingProjectId = ref("");
-const authCredentialsMissing = ref(false);
-const savedAuthTargetSnapshots = ref({});
 const ignoredJSONPathsText = ref("");
-const savedIgnoredJSONPathsText = ref("");
-const destinationVariableDrafts = ref(emptyDestinationVariableDrafts());
 const primaryProjectInput = ref(null);
 const candidateProjectInput = ref(null);
 const secondaryProjectInput = ref(null);
 const projectFileInput = ref(null);
-const postmanFileInput = ref(null);
 const expandedCollections = ref(new Set());
 const activeMenu = ref("");
-const renamingCollectionId = ref("");
-const collectionRenameDraft = ref("");
-const collectionRenameInput = ref(null);
 const draggedTreeItem = ref(null);
 const treeDropTarget = ref("");
 const movingTreeItem = ref(false);
-const collectionSearchOpen = ref(false);
-const collectionSearch = ref("");
-const collectionSearchInput = ref(null);
 let appDialogResolve = null;
 
 function getPreference(name) {
@@ -77,29 +62,6 @@ function setPreference(name, value) {
 
 function emptyProject() {
   return { id: "", name: "", primary: "", candidate: "", secondary: "", auth: {}, ignored_json_paths: [], destination_variables: {}, variables: "{}", collections: [] };
-}
-
-function emptyDestinationVariableDrafts(destinationVariables = {}) {
-  return {
-    primary: JSON.stringify(destinationVariables.primary || {}, null, 2),
-    candidate: JSON.stringify(destinationVariables.candidate || {}, null, 2),
-    secondary: JSON.stringify(destinationVariables.secondary || {}, null, 2)
-  };
-}
-
-function emptyProjectAuth() {
-  return {
-    auth: {
-      primary: { type: "none" },
-      candidate: { type: "none" },
-      secondary: { type: "none" }
-    },
-    credentials: {
-      primary: {},
-      candidate: {},
-      secondary: {}
-    }
-  };
 }
 
 const minSidebarWidth = 210;
@@ -146,31 +108,36 @@ const project = computed(() => projects.value.find((item) => item.id === project
 const collection = computed(() => project.value?.collections?.find((item) => item.id === collectionId.value) || null);
 const selectedFolder = computed(() => findFolder(collection.value?.folders || [], folderId.value));
 const selectedRequest = computed(() => findRequest(collection.value, requestId.value));
-const authTargetLabel = computed(() => ({
-  primary: t("Estable principal"),
-  candidate: t("Candidata"),
-  secondary: t("Estable secundaria")
-}[authTarget.value]));
-const authPanelTitle = computed(() => t("Configuración de {destination}", { destination: authTargetLabel.value }));
-const hasUnsavedComparisonOptions = computed(() => ignoredJSONPathsText.value !== savedIgnoredJSONPathsText.value);
-function authTargetSnapshot(target, auth = authForm.value.auth, credentials = authForm.value.credentials, variableDrafts = destinationVariableDrafts.value) {
-  return JSON.stringify({
-    auth: auth[target] || {},
-    credentials: credentials[target] || {},
-    variables: variableDrafts[target] || ""
-  });
-}
-const hasUnsavedAuthTarget = (target) =>
-  authLoadedProjectId.value === project.value?.id &&
-  savedAuthTargetSnapshots.value[target] !== undefined &&
-  savedAuthTargetSnapshots.value[target] !== authTargetSnapshot(target);
-const authMethodHint = computed(() => ({
-  none: t("Este destino no enviará credenciales."),
-  bearer: t("El token se enviará como una cabecera Authorization: Bearer."),
-  basic: t("El usuario y la contraseña se enviarán mediante autenticación HTTP Basic."),
-  api_key: t("La clave se enviará en la ubicación que elijas.")
-}[authForm.value.auth[authTarget.value].type || "none"]));
-const visibleCollections = computed(() => (project.value?.collections || []).filter((item) => collectionMatches(item, collectionSearch.value)));
+const {
+  authTarget,
+  authForm,
+  authSaving,
+  authLoadedProjectId,
+  authLoadingProjectId,
+  authCredentialsMissing,
+  destinationVariableDrafts,
+  dirtyTargets: dirtyAuthTargets,
+  hasUnsavedComparisonOptions,
+  resetDestinationVariableDrafts,
+  loadProjectAuth,
+  saveProjectAuth,
+  setAuthTarget,
+  setAuthType,
+  updateAuthSetting,
+  updateCredential
+} = useProjectAuthentication({
+  project,
+  projectId,
+  ignoredPathsText: ignoredJSONPathsText,
+  backend,
+  refreshProjects,
+  t,
+  flash: (message, isError) => flash(message, isError),
+  onSaved: () => {
+    response.value = null;
+    flash(t("Opciones guardadas."));
+  }
+});
 const projectLabel = computed(() => project.value?.name || t("Selecciona un proyecto"));
 const visibleCollectionRun = computed(() =>
   collectionRun.value?.collectionId === collection.value?.id ? collectionRun.value : null
@@ -186,16 +153,8 @@ const latencySummaries = computed(() => {
     delta: result.duration_ms - primaryDuration
   }));
 });
-watch(() => project.value?.secondary, (secondary) => {
-  if (!secondary && authTarget.value === "secondary") {
-    authTarget.value = "primary";
-    authForm.value.auth.secondary = { type: "none" };
-    authForm.value.credentials.secondary = {};
-  }
-});
 const requestCount = computed(() => (project.value?.collections || []).reduce((sum, item) =>
   sum + countRequests(item.requests || [], item.folders || []), 0));
-const queryParamCount = computed(() => queryParams.value.filter((param) => param.key !== "" || param.value !== "").length);
 const comparisonSummary = computed(() => {
   if (!response.value) return null;
   const results = [response.value.primary, response.value.candidate];
@@ -413,71 +372,6 @@ const comparisonPanels = computed(() => {
   return panels;
 });
 
-function decodeQueryPart(value) {
-  try {
-    return decodeURIComponent(value.replaceAll("+", " "));
-  } catch {
-    return value.replaceAll("+", " ");
-  }
-}
-
-function parseQueryParams(path) {
-  const hashIndex = path.indexOf("#");
-  const queryIndex = path.indexOf("?");
-  if (queryIndex < 0 || (hashIndex >= 0 && queryIndex > hashIndex)) return [];
-  const queryEnd = hashIndex >= 0 ? hashIndex : path.length;
-  const rawQuery = path.slice(queryIndex + 1, queryEnd);
-  if (!rawQuery) return [];
-  return rawQuery.split("&").filter(Boolean).map((part) => {
-    const equalsIndex = part.indexOf("=");
-    return {
-      key: decodeQueryPart(equalsIndex < 0 ? part : part.slice(0, equalsIndex)),
-      value: decodeQueryPart(equalsIndex < 0 ? "" : part.slice(equalsIndex + 1)),
-      hasEquals: equalsIndex >= 0
-    };
-  });
-}
-
-function encodeQueryPart(value) {
-  return String(value).split(/({{.*?}})/g).map((part) =>
-    part.startsWith("{{") && part.endsWith("}}")
-      ? part
-      : encodeURIComponent(part).replaceAll("%20", "+")
-  ).join("");
-}
-
-function syncQueryParams() {
-  queryParams.value = parseQueryParams(selectedRequest.value?.path || "");
-}
-
-function updateQueryPath() {
-  if (!selectedRequest.value) return;
-  const path = selectedRequest.value.path || "";
-  const hashIndex = path.indexOf("#");
-  const queryIndex = path.indexOf("?");
-  const hasQuery = queryIndex >= 0 && (hashIndex < 0 || queryIndex < hashIndex);
-  const prefix = hasQuery ? path.slice(0, queryIndex) : hashIndex < 0 ? path : path.slice(0, hashIndex);
-  const fragment = hashIndex >= 0 ? path.slice(hashIndex) : "";
-  const values = queryParams.value
-    .filter((param) => param.key !== "" || param.value !== "")
-    .map((param) => `${encodeQueryPart(param.key)}${param.hasEquals || param.value !== "" ? `=${encodeQueryPart(param.value)}` : ""}`);
-  selectedRequest.value.path = `${prefix}${values.length ? `?${values.join("&")}` : hasQuery && !queryParams.value.length ? "?" : ""}${fragment}`;
-}
-
-function addQueryParam() {
-  queryParams.value.push({ key: "", value: "", hasEquals: true });
-}
-
-function removeQueryParam(index) {
-  queryParams.value.splice(index, 1);
-  updateQueryPath();
-}
-
-watch(
-  [() => selectedRequest.value?.id, () => selectedRequest.value?.path],
-  syncQueryParams
-);
-
 function findFolder(folders, id) {
   for (const folder of folders) {
     if (folder.id === id) return folder;
@@ -534,41 +428,6 @@ function collectCollectionRequests(item) {
   };
   visitFolders(item.folders || []);
   return requests;
-}
-
-function matchesSearch(value, query) {
-  return String(value || "").toLocaleLowerCase().includes(query);
-}
-
-function requestMatches(request, query) {
-  return !query || matchesSearch(`${request.name} ${request.method} ${request.path}`, query);
-}
-
-function folderMatches(folder, query) {
-  return !query || matchesSearch(folder.name, query) ||
-    (folder.requests || []).some((request) => requestMatches(request, query)) ||
-    (folder.folders || []).some((child) => folderMatches(child, query));
-}
-
-function collectionMatches(item, rawQuery = collectionSearch.value) {
-  const query = rawQuery.trim().toLocaleLowerCase();
-  return !query || matchesSearch(item.name, query) ||
-    (item.requests || []).some((request) => requestMatches(request, query)) ||
-    (item.folders || []).some((folder) => folderMatches(folder, query));
-}
-
-function collectionItemSearch(item) {
-  const query = collectionSearch.value.trim();
-  return matchesSearch(item.name, query) ? "" : query;
-}
-
-function toggleCollectionSearch() {
-  closeMenus();
-  collectionSearchOpen.value = !collectionSearchOpen.value;
-  collectionSearch.value = "";
-  if (collectionSearchOpen.value) {
-    requestAnimationFrame(() => collectionSearchInput.value?.focus());
-  }
 }
 
 function menuKey(type, id = "") {
@@ -738,42 +597,9 @@ function openProject(id) {
   requestId.value = "";
   response.value = null;
   ignoredJSONPathsText.value = (projects.value.find((item) => item.id === id)?.ignored_json_paths || []).join("\n");
-  destinationVariableDrafts.value = emptyDestinationVariableDrafts(projects.value.find((item) => item.id === id)?.destination_variables);
   authTarget.value = "primary";
   closeMenus();
   loadProjectAuth(id);
-}
-
-async function loadProjectAuth(id) {
-  authLoadedProjectId.value = "";
-  authLoadingProjectId.value = id;
-  authCredentialsMissing.value = false;
-  savedAuthTargetSnapshots.value = {};
-  authForm.value = emptyProjectAuth();
-  destinationVariableDrafts.value = emptyDestinationVariableDrafts(project.value?.destination_variables);
-  savedIgnoredJSONPathsText.value = (project.value?.ignored_json_paths || []).join("\n");
-  try {
-    const settings = await backend().GetProjectAuth(id);
-    if (projectId.value !== id) return;
-    authForm.value = emptyProjectAuth();
-    Object.assign(authForm.value.auth, settings.auth || {});
-    Object.assign(authForm.value.credentials, settings.credentials || {});
-    authCredentialsMissing.value = settings.credentials_missing || false;
-    authLoadedProjectId.value = id;
-    savedAuthTargetSnapshots.value = Object.fromEntries(
-      ["primary", "candidate", "secondary"].map((target) => [
-        target,
-        authTargetSnapshot(target)
-      ])
-    );
-  } catch (error) {
-    if (projectId.value === id) {
-      authForm.value.auth = { ...authForm.value.auth, ...(project.value?.auth || {}) };
-      flash(error.message || String(error), true);
-    }
-  } finally {
-    if (authLoadingProjectId.value === id) authLoadingProjectId.value = "";
-  }
 }
 
 function goHome() {
@@ -817,15 +643,14 @@ function selectRequest(targetCollectionID, id, parentFolderId = "") {
   response.value = null;
   expandedCollections.value.add(targetCollectionID);
   closeMenus();
-  activeEditorTab.value = "params";
-  syncQueryParams();
+  requestEditorResetKey.value += 1;
 }
 
 function newProject() {
   editingProject.value = false;
   projectForm.value = emptyProject();
   ignoredJSONPathsText.value = "";
-  destinationVariableDrafts.value = emptyDestinationVariableDrafts();
+  resetDestinationVariableDrafts();
   projectDialog.value = true;
 }
 
@@ -834,7 +659,7 @@ async function editProject(target = "") {
   projectForm.value = JSON.parse(JSON.stringify(project.value));
   projectForm.value.variables = JSON.stringify(project.value.variables || {}, null, 2);
   ignoredJSONPathsText.value = (project.value.ignored_json_paths || []).join("\n");
-  destinationVariableDrafts.value = emptyDestinationVariableDrafts(project.value.destination_variables);
+  resetDestinationVariableDrafts(project.value.destination_variables);
   projectDialog.value = true;
   const targetInput = {
     primary: primaryProjectInput,
@@ -859,73 +684,6 @@ async function saveProject() {
   } catch (error) {
     flash(error.message || String(error), true);
   }
-}
-
-async function saveProjectAuth() {
-  if (!project.value || authSaving.value || authLoadedProjectId.value !== project.value.id) return;
-  authSaving.value = true;
-  try {
-    const authToSave = JSON.parse(JSON.stringify(authForm.value.auth));
-    const credentialsToSave = JSON.parse(JSON.stringify(authForm.value.credentials));
-    const variableDraftsToSave = { ...destinationVariableDrafts.value };
-    const ignoredPathsToSave = ignoredJSONPathsText.value;
-    const destinationVariables = {};
-    for (const target of ["primary", "candidate", "secondary"]) {
-      const parsed = JSON.parse(variableDraftsToSave[target] || "{}");
-      if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object" ||
-          Object.values(parsed).some((value) => typeof value !== "string")) {
-        throw new Error(t("Las variables de {destination} deben ser un objeto JSON con valores de texto.", {
-          destination: destinationLabel(target)
-        }));
-      }
-      destinationVariables[target] = parsed;
-    }
-    const saved = await backend().SaveProjectWithAuth({
-      ...JSON.parse(JSON.stringify(project.value)),
-      auth: authToSave,
-      ignored_json_paths: ignoredPathsToSave.split(/\r?\n/).map((path) => path.trim()).filter(Boolean),
-      destination_variables: destinationVariables
-    }, credentialsToSave);
-    await refreshProjects();
-    if (projectId.value !== saved.id) return;
-    authLoadedProjectId.value = saved.id;
-    authCredentialsMissing.value = false;
-    savedIgnoredJSONPathsText.value = ignoredPathsToSave;
-    savedAuthTargetSnapshots.value = Object.fromEntries(
-      ["primary", "candidate", "secondary"].map((target) => [
-        target,
-        authTargetSnapshot(target, authToSave, credentialsToSave, variableDraftsToSave)
-      ])
-    );
-    response.value = null;
-    flash(t("Opciones guardadas."));
-  } catch (error) {
-    flash(error.message || String(error), true);
-  } finally {
-    authSaving.value = false;
-  }
-}
-
-function setAuthTarget(target) {
-  authTarget.value = target;
-}
-
-function destinationLabel(target) {
-  return {
-    primary: t("la estable principal"),
-    candidate: t("la candidata"),
-    secondary: t("la estable secundaria")
-  }[target];
-}
-
-function setAuthType(type) {
-  const current = authForm.value.auth[authTarget.value];
-  authForm.value.auth[authTarget.value] = {
-    ...current,
-    ...(type === "api_key" && !current.api_key_location ? { api_key_location: "header" } : {}),
-    type
-  };
-  authForm.value.credentials[authTarget.value] = {};
 }
 
 async function deleteProject(item = project.value) {
@@ -965,31 +723,11 @@ async function createCollection() {
   }
 }
 
-function startCollectionRename(item) {
-  renamingCollectionId.value = item.id;
-  collectionRenameDraft.value = item.name;
-  closeMenus();
-  nextTick(() => {
-    collectionRenameInput.value?.focus();
-    collectionRenameInput.value?.select();
-  });
-}
-
-function cancelCollectionRename(item) {
-  if (renamingCollectionId.value !== item.id) return;
-  renamingCollectionId.value = "";
-  collectionRenameDraft.value = item.name;
-}
-
-async function saveCollectionRename(item) {
-  if (renamingCollectionId.value !== item.id) return;
-  const name = collectionRenameDraft.value.trim();
+async function saveCollectionRename(item, name) {
   if (!name) {
-    cancelCollectionRename(item);
     flash(t("El nombre no puede estar vacío."), true);
     return;
   }
-  renamingCollectionId.value = "";
   if (name === item.name) return;
 
   try {
@@ -1531,162 +1269,41 @@ onMounted(async () => {
     </main>
 
     <div v-else class="workspace" :class="{ 'sidebar-resizing': sidebarResizing }" :style="{ '--sidebar-width': `${sidebarWidth}px` }">
-      <aside class="sidebar">
-        <div class="sidebar-heading">
-          <div v-if="!collectionSearchOpen" class="sidebar-heading-title">
-            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2.8 6.7 3.6v7.2L10 17.2l-6.7-3.6V6.4L10 2.8Z"/><path d="m3.3 6.4 6.7 3.7 6.7-3.7M10 10.1v7.1"/></svg>
-            <span>{{ t("Colecciones") }}</span>
-          </div>
-          <input
-            v-else
-            ref="collectionSearchInput"
-            v-model="collectionSearch"
-            class="collection-search"
-            :aria-label="t('Buscar colecciones y peticiones')"
-            :placeholder="t('Buscar…')"
-            @keydown.esc="toggleCollectionSearch"
-          >
-          <div class="sidebar-heading-actions">
-            <button class="icon-button" :title="t(collectionSearchOpen ? 'Cerrar búsqueda' : 'Buscar')" :aria-label="t(collectionSearchOpen ? 'Cerrar búsqueda' : 'Buscar')" @click="toggleCollectionSearch">
-              <svg v-if="!collectionSearchOpen" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.7" cy="8.7" r="5.6"/><path d="m12.8 12.8 4 4"/></svg>
-              <svg v-else viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg>
-            </button>
-            <button class="icon-button" :title="t('Nueva colección')" :aria-label="t('Nueva colección')" @click="createCollection">＋</button>
-            <button class="icon-button" :title="t('Más opciones')" :aria-label="t('Más opciones')" :aria-expanded="activeMenu === menuKey('import')" @click.stop="toggleMenu('import')">
-              <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1"/><circle cx="10" cy="10" r="1"/><circle cx="16" cy="10" r="1"/></svg>
-            </button>
-            <div v-if="activeMenu === menuKey('import')" class="collection-menu sidebar-options-menu" @click.stop>
-              <button @click="closeMenus(); postmanFileInput.click()">{{ t("Importar colección de Postman") }}</button>
-            </div>
-          </div>
-          <input ref="postmanFileInput" type="file" accept=".json,application/json" hidden @change="importPostman">
-        </div>
-        <div class="collection-tree">
-          <div v-for="item in visibleCollections" :key="item.id" class="collection-group">
-            <div
-              class="tree-row collection-row"
-              :class="{ selected: collectionId === item.id && !folderId && !requestId, 'menu-open': activeMenu === menuKey('collection', item.id), 'drop-target': treeDropTarget === treeDropTargetKey('collection', item.id) }"
-              :title="t('Suelta aquí para mover a la colección')"
-              @dragover="treeDragOver($event, item.id)"
-              @drop.prevent.stop="dropTreeItem(item.id)"
-            >
-              <button
-                class="tree-toggle"
-                :aria-label="t(expandedCollections.has(item.id) ? 'Contraer colección' : 'Expandir colección')"
-                :aria-expanded="expandedCollections.has(item.id)"
-                @click="toggleCollection(item)"
-              >
-                <svg class="tree-chevron" :class="{ expanded: expandedCollections.has(item.id) }" viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="m5.5 6.5 2.5 2.5 2.5-2.5" />
-                </svg>
-              </button>
-              <div v-if="renamingCollectionId === item.id" class="tree-label tree-label-editing">
-                <span class="collection-icon">▤</span>
-                <input
-                  ref="collectionRenameInput"
-                  v-model="collectionRenameDraft"
-                  class="tree-rename-input"
-                  :aria-label="t('Nombre de la colección')"
-                  :title="t('Pulsa Enter para guardar o Escape para cancelar.')"
-                  @click.stop
-                  @keydown.enter.prevent="saveCollectionRename(item)"
-                  @keydown.esc.prevent="cancelCollectionRename(item)"
-                  @blur="saveCollectionRename(item)"
-                >
-              </div>
-              <button v-else class="tree-label" @click="selectCollection(item)">
-                <span class="collection-icon">▤</span><span class="tree-name">{{ item.name }}</span>
-              </button>
-              <div class="tree-actions">
-                <button
-                  class="icon-button tiny"
-                  :title="t('Opciones de colección')"
-                  :aria-expanded="activeMenu === menuKey('collection', item.id)"
-                  @click.stop="toggleMenu('collection', item.id)"
-                >···</button>
-              </div>
-              <div v-if="activeMenu === menuKey('collection', item.id)" class="collection-menu" @click.stop>
-                <button @click="selectCollection(item); createRequest()">＋ {{ t("Nueva petición") }}</button>
-                <button @click="selectCollection(item); createFolder()">＋ {{ t("Nueva carpeta") }}</button>
-                <div class="collection-menu-separator"></div>
-                <button
-                  :disabled="busy || countRequests(item.requests || [], item.folders || []) === 0"
-                  @click="closeMenus(); runCollectionFromMenu(item)"
-                >▶ {{ t("Ejecutar colección ({count})", { count: countRequests(item.requests || [], item.folders || []) }) }}</button>
-                <div class="collection-menu-separator"></div>
-                <button @click="selectCollection(item); startCollectionRename(item)">{{ t("Renombrar colección") }}</button>
-                <button class="collection-menu-danger" @click="selectCollection(item); deleteCollection()">{{ t("Eliminar colección") }}</button>
-              </div>
-            </div>
-            <div v-if="expandedCollections.has(item.id) || collectionSearch.trim()" class="tree-children">
-              <div v-for="request in (item.requests || []).filter((entry) => requestMatches(entry, collectionItemSearch(item).toLocaleLowerCase()))" :key="request.id" class="request-branch">
-                <div
-                  class="tree-row request-row"
-                  :class="{ selected: collectionId === item.id && requestId === request.id, 'menu-open': activeMenu === menuKey('request', request.id) }"
-                  role="button"
-                  tabindex="0"
-                  :title="t('Arrastra la petición a una carpeta o colección para moverla')"
-                  draggable="true"
-                  @click="selectRequest(item.id, request.id)"
-                  @keydown.enter="selectRequest(item.id, request.id)"
-                  @dragstart.stop="startTreeDrag($event, { type: 'request', id: request.id, collectionId: item.id, parentId: '' })"
-                  @dragend="endTreeDrag"
-                >
-                  <span class="tree-spacer"></span>
-                  <span class="method-badge" :class="`method-${request.method.toLowerCase()}`">{{ request.method }}</span>
-                  <span class="tree-name">{{ request.name }}</span>
-                  <span class="tree-actions">
-                    <button class="icon-button tiny" :title="t('Opciones de petición')" :aria-expanded="activeMenu === menuKey('request', request.id)" @click.stop="toggleMenu('request', request.id)">···</button>
-                  </span>
-                </div>
-                <div v-if="activeMenu === menuKey('request', request.id)" class="collection-menu request-menu" @click.stop>
-                  <button @click="closeMenus(); duplicateRequest(request)">{{ t("Duplicar petición") }}</button>
-                  <button class="collection-menu-danger" @click="closeMenus(); deleteRequestByID(request.id)">{{ t("Eliminar petición") }}</button>
-                </div>
-              </div>
-              <FolderTree
-                v-for="folder in item.folders || []"
-                :key="folder.id"
-                :folder="folder"
-                :locale="locale"
-                :collection-id="item.id"
-                :selected-collection-id="collectionId"
-                :selected-folder-id="folderId"
-                :selected-request-id="requestId"
-                :active-menu="activeMenu"
-                :search-term="collectionItemSearch(item)"
-                :dragged-item="draggedTreeItem"
-                :drop-target="treeDropTarget"
-                @select-folder="(id) => selectFolder(item.id, id)"
-                @select-request="(id, parentFolderId) => selectRequest(item.id, id, parentFolderId)"
-                @toggle-menu="toggleMenu"
-                @close-menus="closeMenus"
-                @duplicate-request="duplicateRequest"
-                @delete-request="deleteRequestByID"
-                @create-folder="createFolder"
-                @create-request="createRequest"
-                @rename-folder="(id, name) => renameFolder(item.id, id, name)"
-                @delete-folder="deleteFolder"
-                @drag-start="startTreeDrag"
-                @drag-end="endTreeDrag"
-                @drag-over="(event, targetCollectionID, targetFolderID) => treeDragOver(event, targetCollectionID, targetFolderID)"
-                @drop-on-folder="(event, targetCollectionID, targetFolderID) => dropTreeItem(targetCollectionID, targetFolderID)"
-              />
-            </div>
-          </div>
-          <div v-if="!visibleCollections.length" class="sidebar-empty">
-            <p v-if="collectionSearch.trim()">{{ t("No se encontraron coincidencias.") }}</p>
-            <template v-else>
-            <p>{{ t("Aún no hay colecciones.") }}</p>
-            <button class="button secondary small" @click="createCollection">{{ t("Crear colección") }}</button>
-            </template>
-          </div>
-        </div>
-        <div class="sidebar-bottom">
-          <span>{{ t(requestCount === 1 ? "{count} petición" : "{count} peticiones", { count: requestCount }) }}</span>
-          <span>DiffTwin</span>
-        </div>
-      </aside>
+      <CollectionSidebar
+        :project="project"
+        :locale="locale"
+        :collection-id="collectionId"
+        :folder-id="folderId"
+        :request-id="requestId"
+        :request-count="requestCount"
+        :expanded-collections="expandedCollections"
+        :active-menu="activeMenu"
+        :dragged-item="draggedTreeItem"
+        :drop-target="treeDropTarget"
+        :busy="busy"
+        @select-collection="selectCollection"
+        @select-folder="selectFolder"
+        @select-request="selectRequest"
+        @toggle-collection="toggleCollection"
+        @create-collection="createCollection"
+        @create-folder="createFolder"
+        @create-request="createRequest"
+        @rename-collection="saveCollectionRename"
+        @delete-collection="deleteCollection"
+        @run-collection="runCollectionFromMenu"
+        @duplicate-request="duplicateRequest"
+        @delete-request="deleteRequestByID"
+        @toggle-menu="toggleMenu"
+        @close-menus="closeMenus"
+        @import-postman="importPostman"
+        @drag-start="startTreeDrag"
+        @drag-end="endTreeDrag"
+        @drag-over="treeDragOver"
+        @drop="dropTreeItem"
+        @rename-folder="renameFolder"
+        @delete-folder="deleteFolder"
+        @error="(message) => flash(message, true)"
+      />
 
       <div
         class="sidebar-resizer"
@@ -1733,150 +1350,39 @@ onMounted(async () => {
             </button>
           </div>
         </section>
-        <div class="target-strip" :class="{ 'target-strip-two': !project.secondary }" role="group" :aria-label="t('Destino para configurar')">
-          <button type="button" class="target-chip target-chip-button" :class="{ selected: authTarget === 'primary' }" :aria-pressed="authTarget === 'primary'" :aria-label="`${t('Configurar autenticación de estable principal')}${hasUnsavedAuthTarget('primary') ? ` · ${t('Sin guardar')}` : ''}`" @click="setAuthTarget('primary')">
-            <i class="target-dot stable"></i><span class="target-chip-content"><span>{{ t("ESTABLE PRINCIPAL") }}</span><strong>{{ project.primary }}</strong><small v-if="hasUnsavedAuthTarget('primary')" class="target-pending">{{ t("Sin guardar") }}</small></span><span v-if="authTarget === 'primary'" class="auth-target-check">✓</span>
-          </button>
-          <button type="button" class="target-chip target-chip-button" :class="{ selected: authTarget === 'candidate' }" :aria-pressed="authTarget === 'candidate'" :aria-label="`${t('Configurar autenticación de candidata')}${hasUnsavedAuthTarget('candidate') ? ` · ${t('Sin guardar')}` : ''}`" @click="setAuthTarget('candidate')">
-            <i class="target-dot candidate"></i><span class="target-chip-content"><span>{{ t("CANDIDATA") }}</span><strong>{{ project.candidate }}</strong><small v-if="hasUnsavedAuthTarget('candidate')" class="target-pending">{{ t("Sin guardar") }}</small></span><span v-if="authTarget === 'candidate'" class="auth-target-check">✓</span>
-          </button>
-          <button v-if="project.secondary" type="button" class="target-chip target-chip-button" :class="{ selected: authTarget === 'secondary' }" :aria-pressed="authTarget === 'secondary'" :aria-label="`${t('Configurar autenticación de estable secundaria')}${hasUnsavedAuthTarget('secondary') ? ` · ${t('Sin guardar')}` : ''}`" @click="setAuthTarget('secondary')">
-            <i class="target-dot stable"></i><span class="target-chip-content"><span>{{ t("ESTABLE SECUNDARIA") }}</span><strong>{{ project.secondary }}</strong><small v-if="hasUnsavedAuthTarget('secondary')" class="target-pending">{{ t("Sin guardar") }}</small></span><span v-if="authTarget === 'secondary'" class="auth-target-check">✓</span>
-          </button>
-        </div>
-        <details class="workspace-auth" open>
-          <summary class="workspace-auth-summary">
-            <strong>{{ authPanelTitle }}</strong>
-            <span v-if="hasUnsavedAuthTarget(authTarget)" class="auth-unsaved-badge">{{ t("Sin guardar") }}</span>
-            <span class="settings-toggle" aria-hidden="true"><span>⌄</span></span>
-          </summary>
-          <div class="workspace-auth-content">
-          <section class="auth-configuration">
-            <p v-if="authLoadingProjectId === project.id" class="auth-storage-note">{{ t("Cargando autenticación…") }}</p>
-            <div class="auth-method-row">
-              <label class="field-label">{{ t("MÉTODO DE AUTENTICACIÓN") }}
-                <select :value="authForm.auth[authTarget].type || 'none'" @change="setAuthType($event.target.value)">
-                  <option value="none">{{ t("Sin autenticación") }}</option>
-                  <option value="bearer">Bearer</option>
-                  <option value="basic">Basic</option>
-                  <option value="api_key">API key</option>
-                </select>
-              </label>
-              <p class="auth-method-hint">{{ authMethodHint }}</p>
-            </div>
-            <div class="workspace-auth-fields">
-              <template v-if="authForm.auth[authTarget].type === 'bearer'">
-                <label class="field-label">{{ t("TOKEN") }}<input v-model="authForm.credentials[authTarget].token" type="password" autocomplete="new-password" required></label>
-              </template>
-              <template v-else-if="authForm.auth[authTarget].type === 'basic'">
-                <label class="field-label">{{ t("USUARIO") }}<input v-model="authForm.credentials[authTarget].username" autocomplete="off"></label>
-                <label class="field-label">{{ t("CONTRASEÑA") }}<input v-model="authForm.credentials[authTarget].password" type="password" autocomplete="new-password" required></label>
-              </template>
-              <template v-else-if="authForm.auth[authTarget].type === 'api_key'">
-                <label class="field-label">{{ t("NOMBRE DE LA CLAVE") }}<input v-model="authForm.auth[authTarget].api_key_name" required placeholder="X-API-Key"></label>
-                <label class="field-label">{{ t("ENVIAR EN") }}
-                  <select v-model="authForm.auth[authTarget].api_key_location">
-                    <option value="header">Header</option>
-                    <option value="query">{{ t("Parámetro de consulta") }}</option>
-                  </select>
-                </label>
-                <label class="field-label">{{ t("VALOR") }}<input v-model="authForm.credentials[authTarget].api_key" type="password" autocomplete="new-password" required></label>
-              </template>
-            </div>
-            <p v-if="authForm.auth[authTarget].type === 'api_key' && authForm.auth[authTarget].api_key_location === 'query'" class="auth-security-warning">
-              {{ t("Las claves en la URL pueden quedar en registros del servidor o de proxies. Usa Header si la API lo admite.") }}
-            </p>
-            <p v-if="authCredentialsMissing" class="auth-security-warning">{{ t("Faltan credenciales guardadas en el sistema. Vuelve a introducirlas para este proyecto.") }}</p>
-            <p v-if="authLoadedProjectId !== project.id && authLoadingProjectId !== project.id" class="auth-security-warning">{{ t("No se pudieron cargar las credenciales seguras. Comprueba que el almacén del sistema esté disponible.") }}</p>
-            <p class="auth-storage-note auth-storage-note-emphasis">🔒 {{ t("Las credenciales se guardan en el almacén seguro del sistema y no se incluyen en la configuración JSON del proyecto.") }}</p>
-          </section>
-          <details class="advanced-settings">
-            <summary><span><strong>{{ t("Variables del destino") }}</strong><small>{{ t("Variables específicas de este destino") }}</small></span><span class="advanced-settings-toggle">⌄</span></summary>
-            <div class="advanced-settings-content">
-              <label class="field-label destination-variables-field">{{ t("VARIABLES ESPECÍFICAS · JSON") }}
-                <textarea
-                  v-model="destinationVariableDrafts[authTarget]"
-                  spellcheck="false"
-                  placeholder='{ "region": "eu-west", "userId": "123" }'
-                ></textarea>
-              </label>
-              <p class="auth-storage-note">{{ t("Estas variables sobrescriben las comunes solo para este destino; las demás conservan el valor común. Se guardan en el JSON del proyecto sin cifrar: no pongas secretos aquí.") }}</p>
-            </div>
-          </details>
-          </div>
-        </details>
-        <details class="comparison-rules">
-          <summary class="workspace-auth-summary">
-            <strong>{{ t("Reglas de comparación") }}</strong>
-            <span v-if="hasUnsavedComparisonOptions" class="auth-unsaved-badge">{{ t("Sin guardar") }}</span>
-            <span class="settings-toggle" aria-hidden="true"><span>⌄</span></span>
-          </summary>
-          <div class="comparison-rules-content">
-            <div class="comparison-settings">
-              <label class="field-label">{{ t("IGNORAR RUTAS JSON · UNA POR LÍNEA") }}
-                <textarea v-model="ignoredJSONPathsText" spellcheck="false" placeholder="$.meta.generatedAt&#10;$.items[*].id"></textarea>
-              </label>
-              <p>{{ t("Admite rutas como $.meta.timestamp, $[\"campo.con.puntos\"] y comodines *. Guardar configuración también guarda estas opciones.") }}</p>
-            </div>
-          </div>
-        </details>
-        <div class="workspace-settings-footer">
-          <button class="button primary small" :disabled="authSaving || authLoadedProjectId !== project.id" @click="saveProjectAuth">
-            {{ authSaving ? t("Guardando…") : t("Guardar configuración") }}
-          </button>
-        </div>
+        <DestinationSettings
+          :project="project"
+          :locale="locale"
+          :auth-target="authTarget"
+          :auth-form="authForm"
+          :destination-variable-drafts="destinationVariableDrafts"
+          :auth-loaded-project-id="authLoadedProjectId"
+          :auth-loading-project-id="authLoadingProjectId"
+          :auth-credentials-missing="authCredentialsMissing"
+          :auth-saving="authSaving"
+          :dirty-targets="dirtyAuthTargets"
+          :comparison-dirty="hasUnsavedComparisonOptions"
+          :ignored-paths-text="ignoredJSONPathsText"
+          @update:auth-target="setAuthTarget"
+          @update:ignored-paths-text="ignoredJSONPathsText = $event"
+          @update:auth-setting="updateAuthSetting"
+          @update:credential="updateCredential"
+          @update:destination-variables="(target, value) => destinationVariableDrafts[target] = value"
+          @auth-type="setAuthType"
+          @save="saveProjectAuth"
+        />
 
         <section v-if="selectedRequest" class="request-editor">
-          <div class="request-sticky">
-            <div class="request-titlebar">
-              <div><span class="eyebrow">{{ t("PETICIÓN") }}</span><input v-model="selectedRequest.name" class="request-title-input" :aria-label="t('Nombre de petición')"></div>
-              <button class="icon-button danger-icon" :title="t('Eliminar petición')" :aria-label="t('Eliminar petición')" @click="deleteRequest">
-                <svg class="trash-icon" viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="M2.5 4.5h11M6 4.5V3h4v1.5m2.5 0-.7 9h-6L5 4.5m2.5 2.2v4.5m3-4.5v4.5" />
-                </svg>
-              </button>
-            </div>
-            <div class="request-urlbar">
-              <select v-model="selectedRequest.method" class="method-select" :class="`method-${selectedRequest.method.toLowerCase()}`">
-                <option v-for="method in ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS']" :key="method">{{ method }}</option>
-              </select>
-              <input v-model="selectedRequest.path" class="url-input" placeholder="/v1/users/{{userId}}">
-              <button class="button primary send-button" :disabled="busy" @click="runRequest">
-                <span v-if="busy" class="spinner"></span><span v-else>▶</span>{{ busy ? t("Ejecutando…") : t("Enviar") }}
-              </button>
-            </div>
-          </div>
-          <div class="editor-tabs">
-            <button class="editor-tab" :class="{ active: activeEditorTab === 'params' }" @click="activeEditorTab = 'params'">Params <span class="tab-count">{{ queryParamCount }}</span></button>
-            <button class="editor-tab" :class="{ active: activeEditorTab === 'headers' }" @click="activeEditorTab = 'headers'">Headers <span class="tab-count">{{ Object.keys(selectedRequest.headers || {}).length }}</span></button>
-            <button class="editor-tab" :class="{ active: activeEditorTab === 'body' }" @click="activeEditorTab = 'body'">Body</button>
-            <span class="tab-spacer"></span>
-            <button class="button secondary small" @click="saveRequest">{{ t("Guardar") }}</button>
-          </div>
-          <div class="editor-grid single">
-            <div v-if="activeEditorTab === 'params'" class="params-editor">
-              <div class="params-heading"><span>{{ t("PARÁMETROS DE CONSULTA") }}</span><button class="button secondary small" @click="addQueryParam">{{ t("＋ Añadir parámetro") }}</button></div>
-              <div v-if="queryParams.length" class="params-table">
-                <div class="param-row param-column-head"><span>{{ t("CLAVE") }}</span><span>{{ t("VALOR") }}</span><span></span></div>
-                <div v-for="(param, index) in queryParams" :key="index" class="param-row">
-                  <input v-model="param.key" :aria-label="t('Clave del parámetro')" placeholder="page" @change="updateQueryPath">
-                  <input v-model="param.value" :aria-label="t('Valor del parámetro')" placeholder="1" @change="updateQueryPath">
-                  <button class="icon-button danger-icon" :aria-label="t('Eliminar parámetro {name}', { name: param.key || index + 1 })" :title="t('Eliminar parámetro')" @click="removeQueryParam(index)">×</button>
-                </div>
-              </div>
-              <p v-else class="params-empty">{{ t("No hay parámetros. Añade uno o escribe una query en la URL.") }}</p>
-            </div>
-            <label v-if="activeEditorTab === 'headers'" class="field-label">{{ t("HEADERS · JSON") }}
-              <textarea
-                :value="JSON.stringify(selectedRequest.headers || {}, null, 2)"
-                spellcheck="false"
-                @change="(event) => { try { selectedRequest.headers = JSON.parse(event.target.value); } catch { flash(t('Headers debe ser JSON válido.'), true); } }"
-              ></textarea>
-            </label>
-            <label v-else-if="activeEditorTab === 'body'" class="field-label">{{ t("BODY") }}
-              <textarea v-model="selectedRequest.body" spellcheck="false" placeholder='{ "example": true }'></textarea>
-            </label>
-          </div>
+          <RequestEditor
+            :request="selectedRequest"
+            :locale="locale"
+            :busy="busy"
+            :reset-key="requestEditorResetKey"
+            @save="saveRequest"
+            @run="runRequest"
+            @delete="deleteRequest"
+            @error="(message) => flash(message, true)"
+          />
           <div v-if="response" class="response-section">
             <div class="response-heading"><span>{{ t("RESULTADO DE LA COMPARACIÓN") }}</span><span>{{ t("Candidata frente a estable principal") }}</span></div>
             <div class="verdict" :class="comparisonSummary.tone">

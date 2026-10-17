@@ -103,7 +103,7 @@ watch(
         <span class="folder-icon">▰</span><span class="tree-name">{{ folder.name }}</span>
       </button>
       <div class="tree-actions">
-        <button class="icon-button tiny" :title="t('Opciones de carpeta')" :aria-expanded="menuOpen" @click.stop="emit('toggle-menu', 'folder', folder.id)">···</button>
+        <button class="icon-button tiny" :title="t('Opciones de carpeta')" :aria-label="t('Opciones de carpeta')" :aria-expanded="menuOpen" @click.stop="emit('toggle-menu', 'folder', folder.id)">···</button>
       </div>
       <div v-if="menuOpen" class="collection-menu folder-menu" @click.stop>
         <button @click="emit('close-menus'); emit('create-request', folder.id)">＋ {{ t("Nueva petición") }}</button>

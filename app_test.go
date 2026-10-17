@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -455,5 +457,239 @@ func TestAppAuthCanBeReconfiguredWhenStoredCredentialsAreMissing(t *testing.T) {
 	}
 	if !settings.CredentialsMissing || settings.Auth["primary"].Type != "bearer" {
 		t.Fatalf("missing keyring entry should preserve editable auth metadata: %#v", settings)
+	}
+}
+
+func TestAppDeleteProjectRemovesProjectFileAndCredentials(t *testing.T) {
+	projectStore, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(projectStore)
+	credentialStore := &memoryCredentialStore{values: map[string]string{}}
+	app.credentials = credentialStore
+	project, err := app.SaveProjectWithAuth(Project{
+		Name: "Private API", Primary: "https://stable.test", Candidate: "https://candidate.test",
+		Auth: map[string]domain.DestinationAuth{"primary": {Type: "bearer"}},
+	}, map[string]domain.AuthCredentials{"primary": {Token: "saved-token"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.DeleteProject(project.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.GetProjects(); len(got) != 0 {
+		t.Fatalf("deleted project remains in store: %#v", got)
+	}
+	if _, exists := credentialStore.values[project.ID]; exists {
+		t.Fatal("project credentials were not deleted")
+	}
+	if _, err := os.Stat(filepath.Join(projectStore.Directory(), project.ID+".json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("project file still exists, stat error = %v", err)
+	}
+	if err := app.DeleteProject(project.ID); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("deleting missing project error = %v, want os.ErrNotExist", err)
+	}
+}
+
+func TestAppDeleteCollectionRemovesOnlyRequestedCollection(t *testing.T) {
+	projectStore, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(projectStore)
+	project, err := app.SaveProject(Project{
+		Name: "API", Primary: "https://stable.test", Candidate: "https://candidate.test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := app.SaveCollection(project.ID, Collection{ID: "first", Name: "First"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.SaveCollection(project.ID, Collection{ID: "second", Name: "Second"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.DeleteCollection(project.ID, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	saved := app.GetProjects()
+	if len(saved) != 1 || len(saved[0].Collections) != 1 || saved[0].Collections[0].ID != "second" {
+		t.Fatalf("deleting a collection changed unexpected data: %#v", saved)
+	}
+	if err := app.DeleteCollection(project.ID, "missing"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("deleting missing collection error = %v, want os.ErrNotExist", err)
+	}
+	if err := app.DeleteCollection("missing-project", "second"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("deleting collection from missing project error = %v, want os.ErrNotExist", err)
+	}
+}
+
+func TestAppRunRequestValidatesRequestAndUsesDestinationCredentials(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer run-secret" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	projectStore, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(projectStore)
+	credentialStore := &memoryCredentialStore{values: map[string]string{}}
+	app.credentials = credentialStore
+	project, err := app.SaveProjectWithAuth(Project{
+		Name: "Private API", Primary: server.URL, Candidate: server.URL,
+		Auth: map[string]domain.DestinationAuth{
+			"primary": {Type: "bearer"}, "candidate": {Type: "bearer"},
+		},
+	}, map[string]domain.AuthCredentials{
+		"primary": {Token: "run-secret"}, "candidate": {Token: "run-secret"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := Request{Name: "Health", Method: http.MethodGet, Path: "/health"}
+	result, err := app.RunRequest(project.ID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Primary.StatusCode != http.StatusOK || result.Candidate.StatusCode != http.StatusOK {
+		t.Fatalf("request did not use stored credentials: %#v", result)
+	}
+
+	if _, err := app.RunRequest(project.ID, Request{Name: "Invalid", Method: "TRACE", Path: "/"}); err == nil {
+		t.Fatal("RunRequest accepted an unsupported HTTP method")
+	}
+	delete(credentialStore.values, project.ID)
+	if _, err := app.RunRequest(project.ID, request); err == nil ||
+		!strings.Contains(err.Error(), "credentials are missing") {
+		t.Fatalf("RunRequest with missing credentials error = %v", err)
+	}
+	if _, err := app.RunRequest("missing-project", request); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("RunRequest for missing project error = %v, want os.ErrNotExist", err)
+	}
+}
+
+func TestAppProjectSaveAndAuthenticationValidation(t *testing.T) {
+	projectStore, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(projectStore)
+	credentialStore := &memoryCredentialStore{values: map[string]string{}}
+	app.credentials = credentialStore
+
+	project, err := app.SaveProject(Project{
+		Name: "API", Primary: "https://stable.test", Candidate: "https://candidate.test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	project.Auth = map[string]domain.DestinationAuth{"primary": {Type: "bearer"}}
+	if _, err := app.SaveProject(project); err == nil ||
+		!strings.Contains(err.Error(), "SaveProjectWithAuth") {
+		t.Fatalf("SaveProject() auth change error = %v, want secure auth API guidance", err)
+	}
+	if _, err := app.SaveProject(Project{
+		Name: "New secured API", Primary: "https://stable.test", Candidate: "https://candidate.test",
+		Auth: map[string]domain.DestinationAuth{"primary": {Type: "bearer"}},
+	}); err == nil || !strings.Contains(err.Error(), "SaveProjectWithAuth") {
+		t.Fatalf("SaveProject() new auth error = %v, want secure auth API guidance", err)
+	}
+
+	valid := Project{
+		Name: "Private API", Primary: "https://stable.test", Candidate: "https://candidate.test",
+		Auth: map[string]domain.DestinationAuth{"primary": {Type: "bearer"}},
+	}
+	if _, err := app.SaveProjectWithAuth(valid, map[string]domain.AuthCredentials{
+		"unknown": {Token: "unused"},
+	}); err == nil || !strings.Contains(err.Error(), "credential target") {
+		t.Fatalf("SaveProjectWithAuth() unknown credential target error = %v", err)
+	}
+	if _, err := app.SaveProjectWithAuth(valid, nil); err == nil ||
+		!strings.Contains(err.Error(), "bearer token is required") {
+		t.Fatalf("SaveProjectWithAuth() missing credential error = %v", err)
+	}
+
+	secondaryOnly := Project{
+		Name: "Two destinations", Primary: "https://stable.test", Candidate: "https://candidate.test",
+		Auth: map[string]domain.DestinationAuth{"secondary": {Type: "bearer"}},
+	}
+	saved, err := app.SaveProjectWithAuth(secondaryOnly, map[string]domain.AuthCredentials{
+		"secondary": {Token: "removed-without-destination"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := saved.Auth["secondary"]; exists {
+		t.Fatalf("secondary auth remained configured without a secondary destination: %#v", saved.Auth)
+	}
+}
+
+func TestAppGetProjectAuthReportsKeyringFailures(t *testing.T) {
+	projectStore, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(projectStore)
+	credentialStore := &memoryCredentialStore{values: map[string]string{}}
+	app.credentials = credentialStore
+	project, err := app.SaveProjectWithAuth(Project{
+		Name: "Private API", Primary: "https://stable.test", Candidate: "https://candidate.test",
+		Auth: map[string]domain.DestinationAuth{"primary": {Type: "bearer"}},
+	}, map[string]domain.AuthCredentials{"primary": {Token: "saved-token"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	credentialStore.err = errors.New("keyring unavailable")
+	if _, err := app.GetProjectAuth(project.ID); err == nil ||
+		!strings.Contains(err.Error(), "keyring unavailable") {
+		t.Fatalf("GetProjectAuth() backend error = %v, want keyring error", err)
+	}
+	credentialStore.err = nil
+	credentialStore.values[project.ID] = "{"
+	if _, err := app.GetProjectAuth(project.ID); err == nil ||
+		!strings.Contains(err.Error(), "decode credentials") {
+		t.Fatalf("GetProjectAuth() malformed data error = %v, want decode error", err)
+	}
+	if _, err := app.GetProjectAuth("missing"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("GetProjectAuth() missing project error = %v, want os.ErrNotExist", err)
+	}
+}
+
+func TestAppDeleteProjectPreservesProjectWhenKeyringFails(t *testing.T) {
+	projectStore, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(projectStore)
+	credentialStore := &memoryCredentialStore{values: map[string]string{}}
+	app.credentials = credentialStore
+	project, err := app.SaveProjectWithAuth(Project{
+		Name: "Private API", Primary: "https://stable.test", Candidate: "https://candidate.test",
+		Auth: map[string]domain.DestinationAuth{"primary": {Type: "bearer"}},
+	}, map[string]domain.AuthCredentials{"primary": {Token: "saved-token"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	credentialStore.err = errors.New("keyring unavailable")
+	if err := app.DeleteProject(project.ID); err == nil ||
+		!strings.Contains(err.Error(), "keyring unavailable") {
+		t.Fatalf("DeleteProject() keyring error = %v, want keyring failure", err)
+	}
+	if len(app.GetProjects()) != 1 {
+		t.Fatal("project was removed even though the credential store failed")
 	}
 }

@@ -122,7 +122,12 @@ wails dev
    go test -count=1 -tags ci ./...
    go vet -tags ci ./...
    npm --prefix frontend run build
+   npm test --prefix frontend
+   npm exec --prefix frontend -- playwright install chromium
+   npm run test:e2e --prefix frontend
    ```
+
+   La suite E2E de Playwright inicia el frontend y simula el puente Wails para verificar la interfaz sin abrir la aplicación de escritorio. Instala Chromium una sola vez antes de ejecutarla por primera vez.
 
    On Linux or in the Dev Container, you can also run `go test -count=1 -race -tags ci ./...`. On Windows, the race detector requires a compatible C compiler.
 
