@@ -8,7 +8,7 @@ DiffTwin's interface is available in English and Spanish. On first launch, it fo
 
 To change the language, choose **English** or **Español** from the language menu in the bottom-right corner. To change the theme, select the sun or moon button beside it. The button indicates the theme you can switch to.
 
-The screenshots in this guide use reserved `.example` URLs and illustrative response data. They were captured from the application with a local test backend; they do not show live API responses or real credentials. Labels may vary slightly with the application version or selected language.
+The screenshots were captured from the real DiffTwin application. The comparison image uses the built-in demo project, which calls HTTPBin, a public echo service; it contains no credentials or private data. The other screenshots use reserved `.example` URLs and a local test backend. Labels may vary slightly with the application version or selected language.
 
 ## Contents
 
@@ -121,11 +121,11 @@ If DiffTwin reports that credentials are missing, re-enter them for the selected
 
 After selecting **Send**, DiffTwin displays a verdict, response details, and differences between the stable primary and candidate destinations.
 
-![Comparison showing a price difference between primary stable and candidate responses](images/user-manual/response-comparison.png)
+![DiffTwin comparison showing differences between primary stable, candidate, and secondary stable responses, their latency, and response bodies](images/user-manual/response-comparison.png)
 
-*Differences are shown by JSON path, with the primary stable and candidate values side by side. Scroll the request editor to inspect the comparison and response bodies.*
+*Screenshot of the real application with its built-in demo project. Differences are listed by JSON path, and the response bodies are shown in synchronized panes.*
 
-The comparison includes HTTP status, response headers, and response bodies. JSON object key order is normalized. Some transport-specific or volatile headers are excluded. Latency is shown for context but does not affect the verdict.
+The comparison includes HTTP status, response headers, and response bodies. JSON object key order is normalized. Some transport-specific or volatile headers are excluded. Latency is shown beside the response times and can trigger configurable alerts, but it does not change the verdict.
 
 When a stable secondary destination is configured, DiffTwin also compares the two stable responses. A difference between them may indicate existing environment noise rather than a candidate-only change.
 

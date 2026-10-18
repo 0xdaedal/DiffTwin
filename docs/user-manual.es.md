@@ -8,7 +8,7 @@ La interfaz de DiffTwin está disponible en español e inglés. La primera vez q
 
 Para cambiar el idioma, selecciona **Español** o **English** en el menú de idioma de la esquina inferior derecha. Para cambiar el tema, pulsa el botón del sol o de la luna que está a su lado. El botón indica el tema al que puedes cambiar.
 
-Las capturas de esta guía usan direcciones reservadas `.example` y respuestas ilustrativas. Se han obtenido de la aplicación con un backend de pruebas local; no muestran respuestas de API reales ni credenciales. Los nombres de los controles pueden variar ligeramente según la versión de la aplicación o el idioma seleccionado.
+Las capturas se han obtenido de la aplicación real DiffTwin. La comparación usa el proyecto de demostración integrado, que consulta HTTPBin, un servicio público de eco; no contiene credenciales ni datos privados. Las demás capturas usan direcciones reservadas `.example` y un backend de pruebas local. Los nombres de los controles pueden variar ligeramente según la versión de la aplicación o el idioma seleccionado.
 
 ## Contenido
 
@@ -121,11 +121,11 @@ Si DiffTwin indica que faltan credenciales, vuelve a introducirlas para el desti
 
 Después de pulsar **Enviar**, DiffTwin muestra un resultado, los detalles de las respuestas y las diferencias entre los destinos Estable principal y Candidata.
 
-![Comparación que muestra una diferencia de precio entre las respuestas Estable principal y Candidata](images/user-manual/es/comparacion-respuestas.png)
+![Comparación en DiffTwin con diferencias entre Estable principal, Candidata y Estable secundaria, latencias y cuerpos de respuesta](images/user-manual/es/comparacion-respuestas.png)
 
-*Las diferencias se muestran por ruta JSON, con los valores de Estable principal y Candidata uno junto al otro. Desplázate por el editor de peticiones para consultar la comparación y los cuerpos de las respuestas.*
+*Captura de la aplicación real con el proyecto de demostración integrado. Las diferencias se muestran por ruta JSON y los cuerpos de respuesta aparecen en paneles sincronizados.*
 
-La comparación incluye el estado HTTP, las cabeceras y los cuerpos de las respuestas. Se normaliza el orden de las claves de los objetos JSON y se excluyen algunas cabeceras de transporte o variables. La latencia se muestra como referencia, pero no afecta al resultado.
+La comparación incluye el estado HTTP, las cabeceras y los cuerpos de las respuestas. Se normaliza el orden de las claves de los objetos JSON y se excluyen algunas cabeceras de transporte o variables. La latencia se muestra junto a los tiempos y puede generar avisos configurables, pero no modifica el veredicto.
 
 Si configuras un destino Estable secundaria, DiffTwin también compara las dos respuestas estables. Las diferencias entre ellas pueden indicar ruido existente en los entornos y no un cambio exclusivo de la candidata.
 
