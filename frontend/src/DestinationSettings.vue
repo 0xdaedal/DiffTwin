@@ -14,12 +14,14 @@ const props = defineProps({
   authSaving: { type: Boolean, default: false },
   dirtyTargets: { type: Object, required: true },
   comparisonDirty: { type: Boolean, default: false },
-  ignoredPathsText: { type: String, required: true }
+  ignoredPathsText: { type: String, required: true },
+  latencyThresholds: { type: Object, required: true }
 });
 
 const emit = defineEmits([
   "update:authTarget",
   "update:ignoredPathsText",
+  "update:latencyThresholds",
   "update:auth-setting",
   "update:credential",
   "update:destination-variables",
@@ -47,6 +49,14 @@ function updateAuthSetting(target, key, event) {
 
 function updateCredential(target, key, event) {
   emit("update:credential", target, key, event.target.value);
+}
+
+function updateLatencyThreshold(key, event) {
+  const value = Number(event.target.value);
+  emit("update:latencyThresholds", {
+    ...props.latencyThresholds,
+    [key]: Number.isFinite(value) && value > 0 ? Math.round(value) : ""
+  });
 }
 </script>
 
@@ -178,6 +188,39 @@ function updateCredential(target, key, event) {
           <textarea :value="ignoredPathsText" spellcheck="false" placeholder="$.meta.generatedAt&#10;$.items[*].id" @input="emit('update:ignoredPathsText', $event.target.value)"></textarea>
         </label>
         <p>{{ t("Admite rutas como $.meta.timestamp, $[\"campo.con.puntos\"] y comodines *. Guardar configuración también guarda estas opciones.") }}</p>
+      </div>
+      <div class="comparison-settings latency-settings">
+        <strong class="field-label">{{ t("AVISO DE LATENCIA") }}</strong>
+        <div class="latency-threshold-grid">
+          <label class="field-label">{{ t("AVISO · % MÁS LENTA") }}
+            <input
+              type="number"
+              min="1"
+              max="10000"
+              :value="latencyThresholds.warn"
+              @input="updateLatencyThreshold('warn', $event)"
+            >
+          </label>
+          <label class="field-label">{{ t("ALERTA · % MÁS LENTA") }}
+            <input
+              type="number"
+              min="1"
+              max="10000"
+              :value="latencyThresholds.alert"
+              @input="updateLatencyThreshold('alert', $event)"
+            >
+          </label>
+          <label class="field-label">{{ t("MARGEN MÍNIMO · MS") }}
+            <input
+              type="number"
+              min="1"
+              max="600000"
+              :value="latencyThresholds.floor"
+              @input="updateLatencyThreshold('floor', $event)"
+            >
+          </label>
+        </div>
+        <p>{{ t("Solo se avisa cuando la candidata es más lenta que la estable principal y supera a la vez el margen mínimo y el porcentaje. Si hay estable secundaria, su desviación se usa como ruido esperado. La latencia nunca cambia el veredicto.") }}</p>
       </div>
     </div>
   </details>

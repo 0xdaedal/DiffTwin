@@ -246,13 +246,146 @@ test("ejecuta una petición y muestra el resultado de comparación", async ({ pa
 
   await expect(page.getByText("Hay diferencias", { exact: true })).toBeVisible();
   await expect(page.getByText("RESULTADO DE LA COMPARACIÓN")).toBeVisible();
-  await expect(page.locator(".response-card pre").filter({ hasText: '"stable"' })).toBeVisible();
-  await expect(page.locator(".response-card pre").filter({ hasText: '"candidate"' })).toBeVisible();
+  await expect(page.locator(".latency-comparison")).toContainText("Estable principal:");
+  await expect(page.locator(".response-body").filter({ hasText: '"stable"' })).toBeVisible();
+  await expect(page.locator(".response-body").filter({ hasText: '"candidate"' })).toBeVisible();
   await expect.poll(() => page.evaluate(() =>
     window.__difftwinTestState.calls.some((call) =>
       call.method === "RunRequest" && call.projectId === "project-1" && call.request.path === "/users?page=1"
     )
   )).toBe(true);
+});
+
+test("navega, pliega y sincroniza respuestas JSON largas", async ({ page }) => {
+  await page.addInitScript(() => {
+    const primaryBody = {
+      meta: { page: 1, total: 128, generatedAt: "2026-10-18T06:00:00Z" },
+      items: [
+        { id: "ord-1", customer: "ACME", status: "paid", price: 149.9, lines: 4, region: "eu" },
+        { id: "ord-2", customer: "Globex", status: "processing", price: 82, lines: 2, region: "eu" },
+        { id: "ord-3", customer: "Initech", status: "pending", price: 215, lines: 7, region: "us" }
+      ],
+      links: { self: "/orders?page=1", next: "/orders?page=2" },
+      permissions: ["read", "write", "export"],
+      diagnostics: { cache: "hit", node: "stable-1", elapsed: 18 }
+    };
+    const candidateBody = structuredClone(primaryBody);
+    candidateBody.meta.generatedAt = "2026-10-18T06:00:03Z";
+    candidateBody.items[0].price = 159.9;
+    candidateBody.items[1].status = "pending";
+    candidateBody.diagnostics.node = "candidate-1";
+    window.__difftwinTestState.runResponse = {
+      primary: {
+        status_code: 200, duration_ms: 20, body: JSON.stringify(primaryBody),
+        headers: {}, error: "", truncated: false
+      },
+      candidate: {
+        status_code: 200, duration_ms: 24, body: JSON.stringify(candidateBody),
+        headers: {}, error: "", truncated: false
+      },
+      secondary: {
+        status_code: 200, duration_ms: 22, body: JSON.stringify(primaryBody),
+        headers: {}, error: "", truncated: false
+      },
+      secondary_enabled: true,
+      candidate_differs: true,
+      noise_detected: false
+    };
+  });
+  await page.goto("/");
+  await page.locator(".project-card-open").click();
+  await page.getByRole("button", { name: "Expandir colección" }).click();
+  await page.getByRole("button", { name: /Listar usuarios/ }).click();
+  await page.getByRole("button", { name: /Enviar/ }).click();
+
+  await expect(page.getByRole("button", { name: "Solo cambios" })).toHaveClass(/active/);
+  await expect(page.locator(".response-fold").first()).toBeVisible();
+
+  const priceDiff = page.locator(".diff-row-button").filter({ hasText: "$.items[0].price" });
+  await priceDiff.click();
+  await expect(priceDiff).toHaveClass(/diff-current/);
+  await expect(page.locator('.response-line-active[data-json-path="$.items[0].price"]')).toHaveCount(3);
+
+  await page.locator(".response-fold").first().click();
+  await expect(page.locator(".response-fold-expanded")).toHaveCount(3);
+
+  await page.getByRole("button", { name: "Respuesta completa" }).click();
+  await expect(page.locator(".response-fold")).toHaveCount(0);
+  await expect(page.locator(".response-body").first()).toContainText('"diagnostics": {');
+
+  const bodies = page.locator(".response-body");
+  await bodies.first().evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect.poll(async () => bodies.nth(1).evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect.poll(async () => bodies.nth(2).evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});
+
+test("avisa cuando la candidata se desvía en latencia", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__difftwinTestState.runResponse = {
+      primary: { status_code: 200, duration_ms: 200, body: '{"user":"same"}', error: "", truncated: false },
+      candidate: { status_code: 200, duration_ms: 320, body: '{"user":"same"}', error: "", truncated: false },
+      secondary_enabled: false,
+      candidate_differs: false,
+      latency_status: "alert"
+    };
+  });
+  await page.goto("/");
+  await page.locator(".project-card-open").click();
+  await page.getByRole("button", { name: "Expandir colección" }).click();
+  await page.getByRole("button", { name: /Listar usuarios/ }).click();
+  await page.getByRole("button", { name: /Enviar/ }).click();
+
+  const badge = page.locator(".latency-badge");
+  await expect(badge).toHaveClass(/alert/);
+  await expect(badge).toContainText("Latencia muy alta");
+  await expect(badge).toContainText("60 %");
+  await expect(page.locator(".latency-comparison")).toContainText(
+    "La latencia es informativa y no cambia el veredicto."
+  );
+});
+
+test("no muestra aviso de latencia cuando la desviación es aceptable", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__difftwinTestState.runResponse = {
+      primary: { status_code: 200, duration_ms: 470, body: '{"user":"same"}', error: "", truncated: false },
+      candidate: { status_code: 200, duration_ms: 471, body: '{"user":"same"}', error: "", truncated: false },
+      secondary_enabled: false,
+      candidate_differs: false,
+      latency_status: "ok"
+    };
+  });
+  await page.goto("/");
+  await page.locator(".project-card-open").click();
+  await page.getByRole("button", { name: "Expandir colección" }).click();
+  await page.getByRole("button", { name: /Listar usuarios/ }).click();
+  await page.getByRole("button", { name: /Enviar/ }).click();
+
+  await expect(page.locator(".latency-comparison")).toContainText("Estable principal:");
+  await expect(page.locator(".latency-badge")).toHaveCount(0);
+});
+
+test("guarda los umbrales de latencia del proyecto", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".project-card-open").click();
+  await page.locator("details.comparison-rules > summary").click();
+
+  await expect(page.getByLabel("AVISO · % MÁS LENTA")).toHaveValue("20");
+  await expect(page.getByLabel("ALERTA · % MÁS LENTA")).toHaveValue("50");
+  await expect(page.getByLabel("MARGEN MÍNIMO · MS")).toHaveValue("50");
+
+  await page.getByLabel("AVISO · % MÁS LENTA").fill("15");
+  await page.getByLabel("ALERTA · % MÁS LENTA").fill("40");
+  await page.getByLabel("MARGEN MÍNIMO · MS").fill("80");
+  await page.getByRole("button", { name: "Guardar configuración" }).click();
+
+  await expect.poll(() => page.evaluate(() => {
+    const call = window.__difftwinTestState.calls.find((entry) => entry.method === "SaveProjectWithAuth");
+    return call && {
+      warn: call.project.latency_warn_percent,
+      alert: call.project.latency_alert_percent,
+      floor: call.project.latency_floor_ms
+    };
+  })).toEqual({ warn: 15, alert: 40, floor: 80 });
 });
 
 test("elimina una petición tras confirmar y persiste el cambio", async ({ page }) => {

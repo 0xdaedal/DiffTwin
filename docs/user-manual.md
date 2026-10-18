@@ -129,7 +129,21 @@ The comparison includes HTTP status, response headers, and response bodies. JSON
 
 When a stable secondary destination is configured, DiffTwin also compares the two stable responses. A difference between them may indicate existing environment noise rather than a candidate-only change.
 
-For JSON responses, differences are shown as paths and values. The interface displays up to 100 differences in a panel. Response bodies are limited to 2 MiB for display.
+For JSON responses, differences are shown as paths and values. The interface displays up to 100 differences in a panel. Use the path filter or the **↑** and **↓** buttons to move through them; selecting a difference scrolls the response bodies to the corresponding line and highlights it.
+
+The **Changes only** view collapses identical sections and lets you expand them individually. The **Full response** view displays continuous JSON without controls between its lines. Response scrolling is synchronized by default and can be disabled to inspect one response independently. Response bodies are limited to 2 MiB for display.
+
+### Latency alert
+
+A **High latency** or **Very high latency** badge appears next to the response times when the candidate is slower than the primary stable destination. The alert never changes the verdict: a comparison still passes or fails based on response content.
+
+Because DiffTwin measures a single request, the alert only appears when the deviation clears three conditions at once:
+
+- **Minimum margin**: the absolute difference in milliseconds below which a deviation is treated as network jitter. Default: 50 ms.
+- **Percentage**: how much slower the candidate is than the primary stable destination. Defaults: 20% for the warning and 50% for the alert.
+- **Noise between stable destinations**: when a secondary stable destination exists, its deviation from the primary stable destination is taken as the expected environment noise. A candidate that does not clearly exceed it is not flagged.
+
+To adjust them, open **Comparison rules** in the project settings and edit **WARNING · % SLOWER**, **ALERT · % SLOWER**, and **MINIMUM MARGIN · MS**. The alert threshold cannot be lower than the warning threshold.
 
 ### Ignore known JSON differences
 

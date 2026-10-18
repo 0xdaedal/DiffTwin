@@ -4,8 +4,9 @@ import * as AppBindings from "../wailsjs/go/main/App";
 import CollectionSidebar from "./CollectionSidebar.vue";
 import DestinationSettings from "./DestinationSettings.vue";
 import RequestEditor from "./RequestEditor.vue";
+import ResponseComparison from "./ResponseComparison.vue";
 import { detectLocale, translate } from "./i18n";
-import { useProjectAuthentication } from "./useProjectAuthentication";
+import { useProjectAuthentication, defaultLatencyThresholds, latencyThresholdsFrom, latencyThresholdsPayload } from "./useProjectAuthentication";
 import { BrowserOpenURL } from "../wailsjs/runtime/runtime.js";
 
 const backend = () => AppBindings;
@@ -39,6 +40,7 @@ const importConflict = ref(null);
 const editingProject = ref(null);
 const projectForm = ref(emptyProject());
 const ignoredJSONPathsText = ref("");
+const latencyThresholds = ref(defaultLatencyThresholds());
 const primaryProjectInput = ref(null);
 const candidateProjectInput = ref(null);
 const secondaryProjectInput = ref(null);
@@ -135,6 +137,7 @@ const {
   project,
   projectId,
   ignoredPathsText: ignoredJSONPathsText,
+  latencyThresholds,
   backend,
   refreshProjects,
   t,
@@ -151,13 +154,31 @@ const visibleCollectionRun = computed(() =>
 const latencySummaries = computed(() => {
   if (!response.value) return [];
   const primaryDuration = response.value.primary.duration_ms;
-  const destinations = [[t("Candidata"), response.value.candidate]];
+  const destinations = [
+    [t("Estable principal"), response.value.primary],
+    [t("Candidata"), response.value.candidate]
+  ];
   if (response.value.secondary_enabled) destinations.push([t("Estable secundaria"), response.value.secondary]);
   return destinations.map(([name, result]) => ({
     name,
     duration: result.duration_ms,
     delta: result.duration_ms - primaryDuration
   }));
+});
+const latencyAlert = computed(() => {
+  const status = response.value?.latency_status;
+  if (status !== "warn" && status !== "alert") return null;
+  const primaryDuration = response.value.primary.duration_ms;
+  const delta = response.value.candidate.duration_ms - primaryDuration;
+  return {
+    status,
+    label: status === "alert" ? t("Latencia muy alta") : t("Latencia elevada"),
+    detail: primaryDuration > 0
+      ? t("La candidata tarda un {percent} % más que la estable principal.", {
+        percent: Math.round((delta * 100) / primaryDuration)
+      })
+      : t("La candidata tarda {delta} ms más que la estable principal.", { delta })
+  };
 });
 const requestCount = computed(() => (project.value?.collections || []).reduce((sum, item) =>
   sum + countRequests(item.requests || [], item.folders || []), 0));
@@ -629,6 +650,7 @@ function openProject(id) {
   requestId.value = "";
   response.value = null;
   ignoredJSONPathsText.value = (projects.value.find((item) => item.id === id)?.ignored_json_paths || []).join("\n");
+  latencyThresholds.value = latencyThresholdsFrom(projects.value.find((item) => item.id === id));
   authTarget.value = "primary";
   closeMenus();
   loadProjectAuth(id);
@@ -682,6 +704,7 @@ function newProject() {
   editingProject.value = false;
   projectForm.value = emptyProject();
   ignoredJSONPathsText.value = "";
+  latencyThresholds.value = defaultLatencyThresholds();
   resetDestinationVariableDrafts();
   projectDialog.value = true;
 }
@@ -691,6 +714,7 @@ async function editProject(target = "") {
   projectForm.value = JSON.parse(JSON.stringify(project.value));
   projectForm.value.variables = JSON.stringify(project.value.variables || {}, null, 2);
   ignoredJSONPathsText.value = (project.value.ignored_json_paths || []).join("\n");
+  latencyThresholds.value = latencyThresholdsFrom(project.value);
   resetDestinationVariableDrafts(project.value.destination_variables);
   projectDialog.value = true;
   const targetInput = {
@@ -706,6 +730,7 @@ async function saveProject() {
     const saved = await backend().SaveProject({
       ...projectForm.value,
       ignored_json_paths: ignoredJSONPathsText.value.split(/\r?\n/).map((path) => path.trim()).filter(Boolean),
+      ...latencyThresholdsPayload(latencyThresholds.value),
       variables: JSON.parse(projectForm.value.variables || "{}")
     });
     projectId.value = saved.id;
@@ -1187,18 +1212,6 @@ async function importPostman(event) {
   }
 }
 
-function prettyBody(body) {
-  try { return JSON.stringify(JSON.parse(body), null, 2); }
-  catch { return body || t("(respuesta vacía)"); }
-}
-
-function statusClass(item) {
-  if (item.error) return "status-error";
-  if (item.status_code >= 200 && item.status_code < 300) return "status-good";
-  if (item.status_code >= 400) return "status-error";
-  return "status-warn";
-}
-
 onMounted(async () => {
   setTheme(isDark.value);
   document.documentElement.lang = locale.value;
@@ -1464,8 +1477,10 @@ onMounted(async () => {
           :dirty-targets="dirtyAuthTargets"
           :comparison-dirty="hasUnsavedComparisonOptions"
           :ignored-paths-text="ignoredJSONPathsText"
+          :latency-thresholds="latencyThresholds"
           @update:auth-target="setAuthTarget"
           @update:ignored-paths-text="ignoredJSONPathsText = $event"
+          @update:latency-thresholds="latencyThresholds = $event"
           @update:auth-setting="updateAuthSetting"
           @update:credential="updateCredential"
           @update:destination-variables="(target, value) => destinationVariableDrafts[target] = value"
@@ -1497,37 +1512,17 @@ onMounted(async () => {
                 <strong>{{ item.name }}:</strong> {{ item.duration }} ms
                 <small>({{ t("{delta} ms frente a estable principal", { delta: `${item.delta > 0 ? "+" : ""}${item.delta}` }) }})</small>
               </span>
+              <span v-if="latencyAlert" class="latency-badge" :class="latencyAlert.status">
+                <strong>{{ latencyAlert.label }}</strong> {{ latencyAlert.detail }}
+              </span>
               <small>{{ t("La latencia es informativa y no cambia el veredicto.") }}</small>
             </div>
-            <section
-              v-for="panel in comparisonPanels"
-              :key="panel.id"
-              class="diff-panel"
-              :class="{ 'diff-panel-noise': panel.id === 'stable' }"
-              :aria-label="panel.title"
-            >
-              <header class="diff-heading">
-                <strong>{{ panel.title }}</strong>
-                <span>{{ t(panel.diffs.length === 1 ? "{count} cambio" : "{count} cambios", { count: Math.min(panel.diffs.length, 100) + (panel.diffs.length > 100 ? "+" : "") }) }}</span>
-              </header>
-              <div class="diff-table">
-                <div class="diff-row diff-column-head">
-                  <span>{{ t("Ruta") }}</span><span>{{ panel.leftLabel }}</span><span>{{ panel.rightLabel }}</span>
-                </div>
-                <div v-for="(diff, index) in panel.diffs.slice(0, 100)" :key="`${diff.path}-${index}`" class="diff-row" :class="`diff-${diff.kind}`">
-                  <code class="diff-path" :title="diff.path">{{ diff.path }}</code>
-                  <code class="diff-value" :title="String(diff.before).slice(0, 1000)">{{ diff.before }}</code>
-                  <code class="diff-value" :title="String(diff.after).slice(0, 1000)">{{ diff.after }}</code>
-                </div>
-              </div>
-              <p v-if="panel.diffs.length > 100" class="diff-truncated">{{ t("Se muestran los primeros 100 cambios.") }}</p>
-            </section>
-            <div class="response-grid" :class="{ 'response-grid-two': !response.secondary_enabled }">
-              <article v-for="[name, result] in responseCards" :key="name" class="response-card">
-                <header><strong>{{ name }}</strong><span class="response-meta" :class="statusClass(result)">{{ result.error ? t("Error") : `HTTP ${result.status_code}` }} · {{ result.duration_ms }} ms</span></header>
-                <pre>{{ result.error || prettyBody(result.body) }}{{ result.truncated ? `\n${t("[Respuesta truncada a 2 MiB]")}` : "" }}</pre>
-              </article>
-            </div>
+            <ResponseComparison
+              :cards="responseCards"
+              :panels="comparisonPanels"
+              :locale="locale"
+              :secondary-enabled="response.secondary_enabled"
+            />
           </div>
         </section>
 

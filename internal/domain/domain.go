@@ -18,10 +18,23 @@ type Project struct {
 	Secondary            string                       `json:"secondary"`
 	Auth                 map[string]DestinationAuth   `json:"auth,omitempty"`
 	IgnoredJSONPaths     []string                     `json:"ignored_json_paths,omitempty"`
+	LatencyWarnPercent   int                          `json:"latency_warn_percent,omitempty"`
+	LatencyAlertPercent  int                          `json:"latency_alert_percent,omitempty"`
+	LatencyFloorMS       int                          `json:"latency_floor_ms,omitempty"`
 	Variables            map[string]string            `json:"variables,omitempty"`
 	DestinationVariables map[string]map[string]string `json:"destination_variables,omitempty"`
 	Collections          []Collection                 `json:"collections"`
 }
+
+// Latency thresholds are relative to the primary stable destination. A zero
+// value means the project never configured them, so the defaults apply.
+const (
+	DefaultLatencyWarnPercent  = 20
+	DefaultLatencyAlertPercent = 50
+	DefaultLatencyFloorMS      = 50
+	maxLatencyPercent          = 10000
+	maxLatencyFloorMS          = 600000
+)
 
 type DestinationAuth struct {
 	Type           string `json:"type"`
@@ -150,6 +163,9 @@ func PrepareProject(project *Project) error {
 		}
 	}
 	project.IgnoredJSONPaths = normalizedIgnoredPaths
+	if err := normalizeLatencyThresholds(project); err != nil {
+		return err
+	}
 	for target, auth := range project.Auth {
 		if target != "primary" && target != "candidate" && target != "secondary" {
 			return errors.New("authentication target must be primary, candidate, or secondary")
@@ -289,6 +305,31 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func normalizeLatencyThresholds(project *Project) error {
+	if project.LatencyWarnPercent == 0 {
+		project.LatencyWarnPercent = DefaultLatencyWarnPercent
+	}
+	if project.LatencyAlertPercent == 0 {
+		project.LatencyAlertPercent = DefaultLatencyAlertPercent
+	}
+	if project.LatencyFloorMS == 0 {
+		project.LatencyFloorMS = DefaultLatencyFloorMS
+	}
+	if project.LatencyWarnPercent < 1 || project.LatencyWarnPercent > maxLatencyPercent {
+		return errors.New("el umbral de aviso de latencia debe estar entre 1 y 10000 por ciento")
+	}
+	if project.LatencyAlertPercent < 1 || project.LatencyAlertPercent > maxLatencyPercent {
+		return errors.New("el umbral de alerta de latencia debe estar entre 1 y 10000 por ciento")
+	}
+	if project.LatencyAlertPercent < project.LatencyWarnPercent {
+		return errors.New("el umbral de alerta de latencia no puede ser menor que el de aviso")
+	}
+	if project.LatencyFloorMS < 1 || project.LatencyFloorMS > maxLatencyFloorMS {
+		return errors.New("el margen mínimo de latencia debe estar entre 1 y 600000 milisegundos")
+	}
+	return nil
 }
 
 func CloneProjects(projects []Project) []Project {

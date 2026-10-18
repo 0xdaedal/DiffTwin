@@ -279,6 +279,82 @@ func TestCompareInterpolatesDestinationOverridesAcrossRequestParts(t *testing.T)
 	}
 }
 
+func TestEvaluateLatencyStatusAppliesFloorPercentagesAndStableNoise(t *testing.T) {
+	project := domain.Project{LatencyWarnPercent: 20, LatencyAlertPercent: 50, LatencyFloorMS: 50}
+	tests := []struct {
+		name     string
+		result   Result
+		project  domain.Project
+		expected string
+	}{
+		{
+			name:     "faster candidate is never flagged",
+			result:   Result{Primary: Response{DurationMS: 400}, Candidate: Response{DurationMS: 310}},
+			project:  project,
+			expected: LatencyOK,
+		},
+		{
+			name:     "tiny absolute delta stays below the floor",
+			result:   Result{Primary: Response{DurationMS: 10}, Candidate: Response{DurationMS: 49}},
+			project:  project,
+			expected: LatencyOK,
+		},
+		{
+			name:     "slower candidate above the warning percentage",
+			result:   Result{Primary: Response{DurationMS: 200}, Candidate: Response{DurationMS: 260}},
+			project:  project,
+			expected: LatencyWarn,
+		},
+		{
+			name:     "slower candidate above the alert percentage",
+			result:   Result{Primary: Response{DurationMS: 200}, Candidate: Response{DurationMS: 320}},
+			project:  project,
+			expected: LatencyAlert,
+		},
+		{
+			name: "noisy stable destinations absorb the candidate delta",
+			result: Result{
+				Primary:          Response{DurationMS: 200},
+				Candidate:        Response{DurationMS: 320},
+				Secondary:        Response{DurationMS: 390},
+				SecondaryEnabled: true,
+			},
+			project:  project,
+			expected: LatencyOK,
+		},
+		{
+			name: "candidate beyond the stable noise band is still flagged",
+			result: Result{
+				Primary:          Response{DurationMS: 200},
+				Candidate:        Response{DurationMS: 500},
+				Secondary:        Response{DurationMS: 210},
+				SecondaryEnabled: true,
+			},
+			project:  project,
+			expected: LatencyAlert,
+		},
+		{
+			name:     "failed requests cannot be measured",
+			result:   Result{Primary: Response{DurationMS: 200}, Candidate: Response{DurationMS: 900, Error: "timeout"}},
+			project:  project,
+			expected: "",
+		},
+		{
+			name:     "missing thresholds fall back to defaults",
+			result:   Result{Primary: Response{DurationMS: 200}, Candidate: Response{DurationMS: 320}},
+			project:  domain.Project{},
+			expected: LatencyAlert,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if status := EvaluateLatencyStatus(test.result, test.project); status != test.expected {
+				t.Fatalf("expected %q, got %q", test.expected, status)
+			}
+		})
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (roundTrip roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {

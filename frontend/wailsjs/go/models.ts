@@ -29,6 +29,7 @@ export namespace comparison {
 	    secondary_enabled: boolean;
 	    candidate_differs: boolean;
 	    noise_detected: boolean;
+	    latency_status: string;
 
 	    static createFrom(source: any = {}) {
 	        return new Result(source);
@@ -42,6 +43,7 @@ export namespace comparison {
 	        this.secondary_enabled = source["secondary_enabled"];
 	        this.candidate_differs = source["candidate_differs"];
 	        this.noise_detected = source["noise_detected"];
+	        this.latency_status = source["latency_status"];
 	    }
 
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -204,6 +206,9 @@ export namespace domain {
 	    secondary: string;
 	    auth?: Record<string, DestinationAuth>;
 	    ignored_json_paths?: string[];
+	    latency_warn_percent?: number;
+	    latency_alert_percent?: number;
+	    latency_floor_ms?: number;
 	    variables?: Record<string, string>;
 	    destination_variables?: Record<string, any>;
 	    collections: Collection[];
@@ -221,6 +226,9 @@ export namespace domain {
 	        this.secondary = source["secondary"];
 	        this.auth = this.convertValues(source["auth"], DestinationAuth, true);
 	        this.ignored_json_paths = source["ignored_json_paths"];
+	        this.latency_warn_percent = source["latency_warn_percent"];
+	        this.latency_alert_percent = source["latency_alert_percent"];
+	        this.latency_floor_ms = source["latency_floor_ms"];
 	        this.variables = source["variables"];
 	        this.destination_variables = source["destination_variables"];
 	        this.collections = this.convertValues(source["collections"], Collection);

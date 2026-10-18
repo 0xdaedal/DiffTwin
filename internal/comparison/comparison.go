@@ -33,6 +33,67 @@ type Result struct {
 	SecondaryEnabled bool     `json:"secondary_enabled"`
 	CandidateDiffers bool     `json:"candidate_differs"`
 	NoiseDetected    bool     `json:"noise_detected"`
+	LatencyStatus    string   `json:"latency_status"`
+}
+
+const (
+	LatencyOK    = "ok"
+	LatencyWarn  = "warn"
+	LatencyAlert = "alert"
+)
+
+// stableNoiseMultiplier keeps the candidate unflagged while its extra time stays
+// close to the spread already observed between two identical stable destinations.
+const stableNoiseMultiplier = 1.5
+
+// EvaluateLatencyStatus reports how far the candidate deviates from the primary
+// stable destination. A single request is a weak sample, so a deviation is only
+// reported when it clears three guards: an absolute floor that absorbs jitter,
+// the configured percentage thresholds, and the noise observed between stables.
+// Latency never changes the comparison verdict; it only annotates it.
+func EvaluateLatencyStatus(result Result, project domain.Project) string {
+	if result.Primary.Error != "" || result.Candidate.Error != "" {
+		return ""
+	}
+	delta := result.Candidate.DurationMS - result.Primary.DurationMS
+	if delta <= 0 {
+		return LatencyOK
+	}
+	warnPercent := project.LatencyWarnPercent
+	if warnPercent <= 0 {
+		warnPercent = domain.DefaultLatencyWarnPercent
+	}
+	alertPercent := project.LatencyAlertPercent
+	if alertPercent <= 0 {
+		alertPercent = domain.DefaultLatencyAlertPercent
+	}
+	floorMS := project.LatencyFloorMS
+	if floorMS <= 0 {
+		floorMS = domain.DefaultLatencyFloorMS
+	}
+	if delta < int64(floorMS) {
+		return LatencyOK
+	}
+	if result.SecondaryEnabled && result.Secondary.Error == "" {
+		spread := result.Secondary.DurationMS - result.Primary.DurationMS
+		if spread < 0 {
+			spread = -spread
+		}
+		if float64(delta) <= stableNoiseMultiplier*float64(spread) {
+			return LatencyOK
+		}
+	}
+	if result.Primary.DurationMS <= 0 {
+		return LatencyAlert
+	}
+	percent := float64(delta) * 100 / float64(result.Primary.DurationMS)
+	switch {
+	case percent >= float64(alertPercent):
+		return LatencyAlert
+	case percent >= float64(warnPercent):
+		return LatencyWarn
+	}
+	return LatencyOK
 }
 
 func Compare(client *http.Client, project domain.Project, request domain.Request, credentials map[string]domain.AuthCredentials) Result {
@@ -65,6 +126,7 @@ func Compare(client *http.Client, project domain.Project, request domain.Request
 	}
 	result.Candidate = results[1]
 	result.CandidateDiffers = ResponsesDifferIgnoring(result.Primary, result.Candidate, project.IgnoredJSONPaths)
+	result.LatencyStatus = EvaluateLatencyStatus(result, project)
 	return result
 }
 

@@ -25,10 +25,33 @@ export function emptyDestinationVariableDrafts(destinationVariables = {}) {
   };
 }
 
+export const DEFAULT_LATENCY_THRESHOLDS = Object.freeze({ warn: 20, alert: 50, floor: 50 });
+
+export function defaultLatencyThresholds() {
+  return { ...DEFAULT_LATENCY_THRESHOLDS };
+}
+
+export function latencyThresholdsFrom(project) {
+  return {
+    warn: project?.latency_warn_percent || DEFAULT_LATENCY_THRESHOLDS.warn,
+    alert: project?.latency_alert_percent || DEFAULT_LATENCY_THRESHOLDS.alert,
+    floor: project?.latency_floor_ms || DEFAULT_LATENCY_THRESHOLDS.floor
+  };
+}
+
+export function latencyThresholdsPayload(thresholds) {
+  return {
+    latency_warn_percent: Number(thresholds?.warn) || DEFAULT_LATENCY_THRESHOLDS.warn,
+    latency_alert_percent: Number(thresholds?.alert) || DEFAULT_LATENCY_THRESHOLDS.alert,
+    latency_floor_ms: Number(thresholds?.floor) || DEFAULT_LATENCY_THRESHOLDS.floor
+  };
+}
+
 export function useProjectAuthentication({
   project,
   projectId,
   ignoredPathsText,
+  latencyThresholds = ref(defaultLatencyThresholds()),
   backend,
   refreshProjects,
   t,
@@ -43,10 +66,12 @@ export function useProjectAuthentication({
   const authCredentialsMissing = ref(false);
   const savedAuthTargetSnapshots = ref({});
   const savedIgnoredPathsText = ref("");
+  const savedLatencyThresholds = ref(JSON.stringify(defaultLatencyThresholds()));
   const destinationVariableDrafts = ref(emptyDestinationVariableDrafts());
 
   const hasUnsavedComparisonOptions = computed(() =>
-    ignoredPathsText.value !== savedIgnoredPathsText.value
+    ignoredPathsText.value !== savedIgnoredPathsText.value ||
+    JSON.stringify(latencyThresholdsPayload(latencyThresholds.value)) !== savedLatencyThresholds.value
   );
 
   function authTargetSnapshot(
@@ -86,6 +111,7 @@ export function useProjectAuthentication({
     authForm.value = emptyProjectAuth();
     resetDestinationVariableDrafts(project.value?.destination_variables);
     savedIgnoredPathsText.value = ignoredPathsText.value;
+    savedLatencyThresholds.value = JSON.stringify(latencyThresholdsPayload(latencyThresholds.value));
     try {
       const settings = await backend().GetProjectAuth(id);
       if (projectId.value !== id) return;
@@ -115,6 +141,7 @@ export function useProjectAuthentication({
       const credentialsToSave = JSON.parse(JSON.stringify(authForm.value.credentials));
       const variableDraftsToSave = { ...destinationVariableDrafts.value };
       const ignoredPathsToSave = ignoredPathsText.value;
+      const latencyToSave = latencyThresholdsPayload(latencyThresholds.value);
       const destinationVariables = {};
       for (const target of destinations) {
         const parsed = JSON.parse(variableDraftsToSave[target] || "{}");
@@ -130,6 +157,7 @@ export function useProjectAuthentication({
         ...JSON.parse(JSON.stringify(project.value)),
         auth: authToSave,
         ignored_json_paths: ignoredPathsToSave.split(/\r?\n/).map((path) => path.trim()).filter(Boolean),
+        ...latencyToSave,
         destination_variables: destinationVariables
       }, credentialsToSave);
       await refreshProjects();
@@ -137,6 +165,7 @@ export function useProjectAuthentication({
       authLoadedProjectId.value = saved.id;
       authCredentialsMissing.value = false;
       savedIgnoredPathsText.value = ignoredPathsToSave;
+      savedLatencyThresholds.value = JSON.stringify(latencyToSave);
       savedAuthTargetSnapshots.value = Object.fromEntries(
         destinations.map((target) => [
           target,

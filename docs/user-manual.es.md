@@ -129,7 +129,21 @@ La comparación incluye el estado HTTP, las cabeceras y los cuerpos de las respu
 
 Si configuras un destino Estable secundaria, DiffTwin también compara las dos respuestas estables. Las diferencias entre ellas pueden indicar ruido existente en los entornos y no un cambio exclusivo de la candidata.
 
-En las respuestas JSON, las diferencias se muestran como rutas y valores. El panel presenta hasta 100 diferencias. Los cuerpos de respuesta que se muestran están limitados a 2 MiB.
+En las respuestas JSON, las diferencias se muestran como rutas y valores. El panel presenta hasta 100 diferencias. Usa el filtro de rutas o los botones **↑** y **↓** para recorrerlas; al seleccionar una diferencia, los cuerpos se desplazan hasta la línea correspondiente y la resaltan.
+
+La vista **Solo cambios** pliega los tramos idénticos y permite desplegarlos individualmente. La vista **Respuesta completa** muestra el JSON continuo, sin controles entre sus líneas. El desplazamiento de los cuerpos está sincronizado de forma predeterminada y puede desactivarse para inspeccionar una respuesta por separado. Los cuerpos de respuesta que se muestran están limitados a 2 MiB.
+
+### Aviso de latencia
+
+Junto a los tiempos de respuesta aparece **Latencia elevada** o **Latencia muy alta** cuando la candidata tarda más que la estable principal. El aviso nunca cambia el veredicto: una comparación sigue siendo correcta o incorrecta según el contenido de las respuestas.
+
+Como DiffTwin mide una sola petición, el aviso solo se muestra cuando la desviación supera tres condiciones a la vez:
+
+- **Margen mínimo**: diferencia absoluta en milisegundos por debajo de la cual la desviación se considera ruido de red. Valor predeterminado: 50 ms.
+- **Porcentaje**: cuánto más lenta es la candidata respecto a la estable principal. Valores predeterminados: 20 % para el aviso y 50 % para la alerta.
+- **Ruido entre estables**: si hay un destino Estable secundaria, su desviación frente a la estable principal se toma como el ruido esperado del entorno. Una candidata que no lo supere con holgura no se marca.
+
+Para ajustarlos, abre **Reglas de comparación** en la configuración del proyecto y edita **AVISO · % MÁS LENTA**, **ALERTA · % MÁS LENTA** y **MARGEN MÍNIMO · MS**. El umbral de alerta no puede ser menor que el de aviso.
 
 ### Ignorar diferencias JSON conocidas
 

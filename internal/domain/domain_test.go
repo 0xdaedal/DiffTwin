@@ -263,6 +263,48 @@ func TestPrepareProjectValidatesAndNormalizesIgnoredJSONPaths(t *testing.T) {
 	}
 }
 
+func TestPrepareProjectAppliesAndValidatesLatencyThresholds(t *testing.T) {
+	project := Project{Name: "API", Primary: "https://stable.test", Candidate: "https://candidate.test"}
+	if err := PrepareProject(&project); err != nil {
+		t.Fatal(err)
+	}
+	if project.LatencyWarnPercent != DefaultLatencyWarnPercent ||
+		project.LatencyAlertPercent != DefaultLatencyAlertPercent ||
+		project.LatencyFloorMS != DefaultLatencyFloorMS {
+		t.Fatalf("latency defaults were not applied: %#v", project)
+	}
+
+	project.LatencyWarnPercent = 35
+	project.LatencyAlertPercent = 80
+	project.LatencyFloorMS = 120
+	if err := PrepareProject(&project); err != nil {
+		t.Fatal(err)
+	}
+	if project.LatencyWarnPercent != 35 || project.LatencyAlertPercent != 80 || project.LatencyFloorMS != 120 {
+		t.Fatalf("configured latency thresholds must be preserved: %#v", project)
+	}
+
+	invalid := []struct {
+		name   string
+		mutate func(*Project)
+	}{
+		{"alert below warn", func(p *Project) { p.LatencyWarnPercent = 60; p.LatencyAlertPercent = 40 }},
+		{"negative warn", func(p *Project) { p.LatencyWarnPercent = -5 }},
+		{"negative floor", func(p *Project) { p.LatencyFloorMS = -1 }},
+		{"warn above maximum", func(p *Project) { p.LatencyWarnPercent = maxLatencyPercent + 1 }},
+		{"floor above maximum", func(p *Project) { p.LatencyFloorMS = maxLatencyFloorMS + 1 }},
+	}
+	for _, test := range invalid {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := Project{Name: "API", Primary: "https://stable.test", Candidate: "https://candidate.test"}
+			test.mutate(&candidate)
+			if err := PrepareProject(&candidate); err == nil {
+				t.Fatalf("%s should be rejected", test.name)
+			}
+		})
+	}
+}
+
 func TestMergeVariablesUsesDestinationOverridesAndCommonFallback(t *testing.T) {
 	merged := MergeVariables(
 		map[string]string{"region": "global", "token": "shared", "locale": "en"},

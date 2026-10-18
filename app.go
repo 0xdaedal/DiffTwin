@@ -38,6 +38,9 @@ type projectConfigExport struct {
 	Candidate            string                       `json:"candidate"`
 	Secondary            string                       `json:"secondary"`
 	IgnoredJSONPaths     []string                     `json:"ignored_json_paths,omitempty"`
+	LatencyWarnPercent   int                          `json:"latency_warn_percent,omitempty"`
+	LatencyAlertPercent  int                          `json:"latency_alert_percent,omitempty"`
+	LatencyFloorMS       int                          `json:"latency_floor_ms,omitempty"`
 	Variables            map[string]string            `json:"variables,omitempty"`
 	DestinationVariables map[string]map[string]string `json:"destination_variables,omitempty"`
 	Collections          []Collection                 `json:"collections,omitempty"`
@@ -168,6 +171,9 @@ func exportProjectConfig(project Project) projectConfigExport {
 		Candidate:            project.Candidate,
 		Secondary:            project.Secondary,
 		IgnoredJSONPaths:     project.IgnoredJSONPaths,
+		LatencyWarnPercent:   project.LatencyWarnPercent,
+		LatencyAlertPercent:  project.LatencyAlertPercent,
+		LatencyFloorMS:       project.LatencyFloorMS,
 		Variables:            project.Variables,
 		DestinationVariables: project.DestinationVariables,
 		Collections:          project.Collections,

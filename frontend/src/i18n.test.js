@@ -71,3 +71,23 @@ test("update notifications are localized", () => {
   );
   assert.equal(translate("en", "No se pudo comprobar · Reintentar"), "Could not check · Retry");
 });
+
+test("latency alert messages are localized", () => {
+  assert.equal(translate("en", "Latencia elevada"), "High latency");
+  assert.equal(translate("en", "Latencia muy alta"), "Very high latency");
+  assert.equal(
+    translate("en", "La candidata tarda un {percent} % más que la estable principal.", { percent: 60 }),
+    "The candidate is 60% slower than the primary stable."
+  );
+  assert.equal(translate("en", "AVISO · % MÁS LENTA"), "WARNING · % SLOWER");
+  assert.equal(translate("es", "MARGEN MÍNIMO · MS"), "MARGEN MÍNIMO · MS");
+});
+
+test("response comparison controls are localized", () => {
+  assert.equal(translate("en", "Solo cambios"), "Changes only");
+  assert.equal(translate("en", "Respuesta completa"), "Full response");
+  assert.equal(
+    translate("en", "Mostrar {count} líneas idénticas", { count: 12 }),
+    "Show 12 identical lines"
+  );
+});
