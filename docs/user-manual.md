@@ -35,6 +35,8 @@ The screenshots in this guide use reserved `.example` URLs and illustrative resp
 
 These downloads are not installers and are not currently code-signed or notarized. Your operating system may show a security warning when you first open the app.
 
+Published versions check for a newer stable release on startup. When one is available, DiffTwin shows a notice linking to the GitHub download page. This check requires an internet connection; development builds do not show the notice.
+
 ## 2. Create a project
 
 A project holds the API environments, authentication settings, comparison options, collections, and requests for one API or testing effort.

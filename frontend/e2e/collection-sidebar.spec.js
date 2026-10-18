@@ -41,6 +41,7 @@ test.beforeEach(async ({ page }) => {
     const clone = (value) => JSON.parse(JSON.stringify(value));
     const app = {
       GetProjects: async () => clone(state.projects),
+      CheckForUpdates: async () => ({ current_version: "dev", latest_version: "", release_url: "", available: false }),
       GetProjectAuth: async (projectId) => clone(state.auth[projectId] || {
         auth: { primary: { type: "none" }, candidate: { type: "none" }, secondary: { type: "none" } },
         credentials: {},
@@ -479,6 +480,26 @@ test("muestra crear, importar y probar ejemplo cuando no hay proyectos", async (
   await chooser;
   await page.getByRole("button", { name: "Crear proyecto" }).click();
   await expect(page.locator("form.modal-card")).toBeVisible();
+});
+
+test("muestra y permite ocultar el aviso de nueva versión", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.go.main.App.CheckForUpdates = async () => ({
+      current_version: "v0.1.4",
+      latest_version: "v0.2.0",
+      release_url: "https://github.com/0xdaedal/DiffTwin/releases/tag/v0.2.0",
+      available: true
+    });
+  });
+  await page.goto("/");
+
+  const notice = page.locator(".update-banner");
+  await expect(notice).toContainText("Nueva versión disponible: v0.2.0");
+  await expect(page.getByRole("dialog", { name: "Ya está disponible DiffTwin v0.2.0" })).toBeVisible();
+  await page.getByRole("button", { name: "Ahora no" }).click();
+  await expect(page.getByRole("dialog", { name: "Ya está disponible DiffTwin v0.2.0" })).toHaveCount(0);
+  await notice.getByRole("button", { name: "Ocultar aviso" }).click();
+  await expect(notice).toHaveCount(0);
 });
 
 for (const locale of ["es", "en"]) {

@@ -35,6 +35,8 @@ Las capturas de esta guía usan direcciones reservadas `.example` y respuestas i
 
 Estos archivos no son instaladores y actualmente no están firmados ni notarizados. Es posible que el sistema operativo muestre un aviso de seguridad la primera vez que abras la aplicación.
 
+Las versiones publicadas comprueban si hay una release estable más reciente al iniciarse. Si existe, DiffTwin muestra un aviso con un enlace a la página de descarga de GitHub. Esta comprobación requiere conexión a internet; las compilaciones de desarrollo no muestran el aviso.
+
 ## 2. Crear un proyecto
 
 Un proyecto contiene los entornos de la API, la configuración de autenticación, las opciones de comparación, las colecciones y las peticiones de una API o tarea de pruebas.

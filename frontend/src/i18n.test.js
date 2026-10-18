@@ -63,3 +63,11 @@ test("dashboard actions and project menus are localized", () => {
     "Create your first project or import an existing one to get started."
   );
 });
+
+test("update notifications are localized", () => {
+  assert.equal(
+    translate("en", "Nueva versión disponible: {version}", { version: "v0.2.0" }),
+    "New version available: v0.2.0"
+  );
+  assert.equal(translate("en", "No se pudo comprobar · Reintentar"), "Could not check · Retry");
+});

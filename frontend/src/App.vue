@@ -6,6 +6,7 @@ import DestinationSettings from "./DestinationSettings.vue";
 import RequestEditor from "./RequestEditor.vue";
 import { detectLocale, translate } from "./i18n";
 import { useProjectAuthentication } from "./useProjectAuthentication";
+import { BrowserOpenURL } from "../wailsjs/runtime/runtime.js";
 
 const backend = () => AppBindings;
 const projects = ref([]);
@@ -22,6 +23,11 @@ const collectionRunning = ref(false);
 const collectionRun = ref(null);
 const notice = ref("");
 const errorMessage = ref("");
+const updateInfo = ref(null);
+const updateCheckError = ref("");
+const updateCheckLoading = ref(false);
+const updateNoticeDismissed = ref(false);
+const updateDialogVisible = ref(false);
 const appDialog = ref(null);
 const appDialogInput = ref(null);
 const isDark = ref(getPreference("theme") !== "light");
@@ -582,6 +588,32 @@ function setTheme(dark) {
 
 function toggleTheme() {
   setTheme(!isDark.value);
+}
+
+async function checkForUpdates() {
+  updateCheckLoading.value = true;
+  updateCheckError.value = "";
+  try {
+    updateInfo.value = await backend().CheckForUpdates();
+    updateDialogVisible.value = !!updateInfo.value?.available;
+  } catch (error) {
+    updateCheckError.value = error.message || String(error);
+  } finally {
+    updateCheckLoading.value = false;
+  }
+}
+
+function openLatestRelease() {
+  if (updateInfo.value?.release_url) BrowserOpenURL(updateInfo.value.release_url);
+}
+
+function downloadUpdate() {
+  openLatestRelease();
+  dismissUpdateDialog();
+}
+
+function dismissUpdateDialog() {
+  updateDialogVisible.value = false;
 }
 
 function setLocale(value) {
@@ -1179,6 +1211,7 @@ onMounted(async () => {
   } catch (error) {
     flash(error.message || String(error), true);
   }
+  void checkForUpdates();
 });
 </script>
 
@@ -1205,8 +1238,39 @@ onMounted(async () => {
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 2.8h3l.45 1.7c.47.15.9.4 1.3.7l1.7-.55 1.5 2.6-1.25 1.25c.1.5.1 1 0 1.5l1.25 1.25-1.5 2.6-1.7-.55c-.4.3-.83.55-1.3.7l-.45 1.7h-3l-.45-1.7a5.6 5.6 0 0 1-1.3-.7l-1.7.55-1.5-2.6 1.25-1.25a4.8 4.8 0 0 1 0-1.5L3.55 7.25l1.5-2.6 1.7.55c.4-.3.83-.55 1.3-.7l.45-1.7Z"/><circle cx="10" cy="9.25" r="2.3"/></svg>
         </button>
       </template>
+      <div v-if="updateInfo?.available && !updateNoticeDismissed" class="update-banner">
+        <span class="update-banner-icon" aria-hidden="true">↗</span>
+        <div>
+          <strong>{{ t("Nueva versión disponible: {version}", { version: updateInfo.latest_version }) }}</strong>
+          <span>{{ t("Descarga la última versión estable de DiffTwin.") }}</span>
+        </div>
+        <button class="button primary small" @click="downloadUpdate">
+          {{ t("Descargar actualización") }}
+        </button>
+        <button class="icon-button tiny" :title="t('Ocultar aviso')" :aria-label="t('Ocultar aviso')" @click="updateNoticeDismissed = true">×</button>
+      </div>
+      <button
+        v-else-if="updateCheckError"
+        class="button quiet update-check-error"
+        :disabled="updateCheckLoading"
+        :title="updateCheckError"
+        @click="checkForUpdates"
+      >{{ updateCheckLoading ? t("Comprobando…") : t("No se pudo comprobar · Reintentar") }}</button>
       <button class="avatar" title="DiffTwin">DT</button>
     </header>
+
+    <div v-if="updateDialogVisible && updateInfo?.available" class="update-dialog-layer">
+      <section class="modal-card update-dialog" role="dialog" aria-modal="false" aria-labelledby="update-dialog-title">
+        <div class="update-dialog-icon" aria-hidden="true">↗</div>
+        <div class="eyebrow">{{ t("ACTUALIZACIÓN DISPONIBLE") }}</div>
+        <h2 id="update-dialog-title">{{ t("Ya está disponible DiffTwin {version}", { version: updateInfo.latest_version }) }}</h2>
+        <p>{{ t("Hay una versión estable más reciente. Descárgala desde GitHub cuando te venga bien.") }}</p>
+        <div class="modal-actions">
+          <button type="button" class="button secondary" @click="dismissUpdateDialog">{{ t("Ahora no") }}</button>
+          <button type="button" class="button primary" @click="downloadUpdate">{{ t("Descargar actualización") }}</button>
+        </div>
+      </section>
+    </div>
 
     <div v-if="notice || errorMessage" class="toast" :class="{ error: !!errorMessage }">
       <span>{{ errorMessage || notice }}</span><button @click="notice = ''; errorMessage = ''">×</button>

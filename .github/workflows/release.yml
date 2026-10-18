@@ -60,6 +60,8 @@ jobs:
     needs: validate
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    env:
+      APP_VERSION: ${{ github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
@@ -127,15 +129,15 @@ jobs:
 
       - name: Build Linux application
         if: runner.os == 'Linux'
-        run: wails build -platform linux/amd64 -tags webkit2_41
+        run: wails build -platform linux/amd64 -tags webkit2_41 -ldflags "-X main.appVersion=${APP_VERSION}"
 
       - name: Build Windows application
         if: runner.os == 'Windows'
-        run: wails build -platform windows/amd64
+        run: wails build -platform windows/amd64 -ldflags "-X main.appVersion=$env:APP_VERSION"
 
       - name: Build universal macOS application
         if: runner.os == 'macOS'
-        run: wails build -platform darwin/universal
+        run: wails build -platform darwin/universal -ldflags "-X main.appVersion=${APP_VERSION}"
 
       - name: Package Linux application
         if: runner.os == 'Linux'

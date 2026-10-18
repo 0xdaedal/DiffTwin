@@ -51,6 +51,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 button:disabled { opacity: .62; cursor: wait; }
 .shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
 .topbar { height: 58px; display: flex; align-items: center; gap: 15px; padding: 0 22px; background: var(--surface); border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+.update-banner { display: flex; align-items: center; gap: 12px; padding: 10px 22px; border-bottom: 1px solid #667ed155; background: linear-gradient(90deg, #667ed11c, transparent 75%), var(--surface-raised); color: var(--muted); font-size: 12px; }
+.update-banner-icon, .update-dialog-icon { display: grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 16px; font-weight: 700; }
+.update-banner > div { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.update-banner strong { color: var(--text); font-size: 12px; }
+.update-banner .button { flex: 0 0 auto; }
+.update-banner .icon-button { width: 26px; height: 26px; }
+.update-dialog-layer { position: fixed; z-index: 35; inset: 0; display: flex; justify-content: flex-end; align-items: flex-start; padding: 74px 22px 20px; pointer-events: none; }
+.update-dialog { width: min(460px, 100%); gap: 10px; pointer-events: auto; }
+.update-dialog-icon { width: 42px; height: 42px; margin-bottom: 2px; font-size: 22px; }
+.update-dialog h2 { margin: 0; font-size: 22px; line-height: 1.25; }
+.update-dialog p { margin: 0; color: var(--muted); line-height: 1.65; }
+.update-check-error { color: var(--amber); font-size: 10px; }
 .brand { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 700; letter-spacing: -.3px; cursor: pointer; }
 .brand-mark { width: 25px; height: 25px; display: inline-grid; place-items: center; border-radius: 7px; color: white; font-size: 14px; font-weight: 700; background: linear-gradient(145deg,#7a9bff,#536fda); box-shadow: 0 3px 12px #607de544; }
 .brand-mark.mini { width: 18px; height: 18px; font-size: 10px; border-radius: 5px; vertical-align: -4px; margin-right: 5px; }
