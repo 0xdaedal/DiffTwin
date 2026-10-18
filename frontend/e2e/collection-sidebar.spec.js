@@ -409,7 +409,8 @@ test("edita un proyecto y conserva los destinos actualizados", async ({ page }) 
 
 test("elimina un proyecto tras confirmar", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Eliminar proyecto Proyecto de prueba" }).click();
+  await page.locator(".project-actions > summary").click();
+  await page.getByRole("button", { name: "Eliminar", exact: true }).click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("¿Eliminar el proyecto «Proyecto de prueba»?");
@@ -428,7 +429,8 @@ test("elimina un proyecto tras confirmar", async ({ page }) => {
 
 test("exporta un proyecto e indica la ruta devuelta por el backend", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Exportar proyecto Proyecto de prueba" }).click();
+  await page.locator(".project-actions > summary").click();
+  await page.getByRole("button", { name: "Exportar proyecto", exact: true }).click();
 
   await expect(page.locator(".toast")).toContainText("/tmp/Proyecto de prueba.json");
   await expect.poll(() => page.evaluate(() =>
@@ -437,6 +439,84 @@ test("exporta un proyecto e indica la ruta devuelta por el backend", async ({ pa
     )
   )).toBe(true);
 });
+
+test("ofrece acciones claras al abrir el menú de un proyecto", async ({ page }) => {
+  await page.goto("/");
+  const card = page.locator(".project-card");
+
+  await expect(card.getByRole("button", { name: "Abrir proyecto Proyecto de prueba" })).toBeVisible();
+  await expect(card).toContainText("Estable principal");
+  await expect(card).toContainText("Candidata");
+  await expect(card).toContainText("1 colección · 1 petición");
+  await expect(page.getByRole("region", { name: "Tu próxima comparación, en tres pasos" })).toBeVisible();
+  await expect(page.locator(".dashboard-steps li")).toHaveCount(3);
+  await expect(card.locator(".project-actions > summary")).toHaveAttribute(
+    "aria-label",
+    "Opciones de proyecto Proyecto de prueba"
+  );
+
+  await card.locator(".project-actions > summary").click();
+  await expect(card.getByRole("button", { name: "Exportar proyecto", exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Eliminar", exact: true })).toBeVisible();
+  await card.locator(".project-actions > summary").press("Escape");
+  await expect(card.locator(".project-actions")).not.toHaveAttribute("open", "");
+  await expect(card.locator(".project-actions > summary")).toBeFocused();
+});
+
+test("muestra crear, importar y probar ejemplo cuando no hay proyectos", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__difftwinTestState.projects = [];
+  });
+  await page.goto("/");
+
+  await expect(page.getByText("Empieza creando un proyecto")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Crear proyecto" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Importar proyecto" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Probar ejemplo/ })).toBeVisible();
+  await expect(page.locator('input[type="file"][accept=".json,application/json"]')).toBeAttached();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Importar proyecto" }).click();
+  await chooser;
+  await page.getByRole("button", { name: "Crear proyecto" }).click();
+  await expect(page.locator("form.modal-card")).toBeVisible();
+});
+
+for (const locale of ["es", "en"]) {
+  for (const theme of ["light", "dark"]) {
+    test(`ajusta el dashboard con varios proyectos: ${locale}, ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width: 800, height: 650 });
+      await page.addInitScript(({ locale, theme }) => {
+        localStorage.setItem("difftwin-language", locale);
+        localStorage.setItem("difftwin-theme", theme);
+        const initial = window.__difftwinTestState.projects[0];
+        window.__difftwinTestState.projects = Array.from({ length: 12 }, (_, index) => ({
+          ...structuredClone(initial),
+          id: `dashboard-project-${index}`,
+          name: `API ${index} — ${"Inventario ".repeat(12)}`,
+          secondary: "https://secondary.example"
+        }));
+      }, { locale, theme });
+      await page.goto("/");
+      await expect(page.locator(".project-card")).toHaveCount(12);
+      await expect(page.locator(".dashboard-guide")).toHaveCount(0);
+      await expect(page.locator(".project-actions > summary").first()).toHaveAttribute(
+        "aria-label", new RegExp(locale === "es" ? "^Opciones de proyecto" : "^Options for project")
+      );
+      await expect(page.locator(".target-label").first()).toHaveText(
+        locale === "es" ? "Estable principal" : "Primary stable"
+      );
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(800);
+      expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(650);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      const dashboard = page.locator(".dashboard");
+      expect(await dashboard.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+      await page.locator(".project-actions > summary").last().scrollIntoViewIfNeeded();
+      await page.locator(".project-actions > summary").last().click();
+      await expect(page.locator(".project-menu-delete").last()).toBeInViewport();
+    });
+  }
+}
+
 
 test("marca cambios por destino y guarda también las reglas de comparación", async ({ page }) => {
   await page.goto("/");

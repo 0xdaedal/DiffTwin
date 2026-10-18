@@ -48,3 +48,18 @@ test("destination settings labels are localized", () => {
   assert.equal(translate("en", "Reglas de comparación"), "Comparison rules");
   assert.equal(translate("en", "Sin guardar"), "Unsaved");
 });
+
+test("dashboard actions and project menus are localized", () => {
+  assert.equal(
+    translate("en", "Abrir proyecto {name}", { name: "Inventory API" }),
+    "Open project Inventory API"
+  );
+  assert.equal(
+    translate("en", "Opciones de proyecto {name}", { name: "Inventory API" }),
+    "Options for project Inventory API"
+  );
+  assert.equal(
+    translate("en", "Crea tu primer proyecto o importa uno existente para empezar."),
+    "Create your first project or import an existing one to get started."
+  );
+});

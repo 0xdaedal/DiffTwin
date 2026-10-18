@@ -43,6 +43,8 @@ Un proyecto contiene los entornos de la API, la configuración de autenticación
 
 *Desde el panel puedes crear, abrir, importar, exportar y eliminar proyectos.*
 
+Abre un proyecto seleccionando su nombre. Cuando hay un único proyecto, el panel también muestra una guía en tres pasos para configurar destinos, preparar peticiones y comparar respuestas.
+
 1. En el panel, selecciona **Nuevo proyecto**.
 2. Escribe el nombre del proyecto.
 3. Introduce la URL base del entorno **Estable principal** y del entorno **Candidata**. Por ejemplo:
@@ -171,7 +173,7 @@ DiffTwin conserva las carpetas, los métodos, las rutas y los parámetros de con
 
 ### Exportar
 
-En el panel, selecciona **Exportar proyecto** en la tarjeta del proyecto. Elige el nombre y la ubicación del archivo en el cuadro de diálogo para guardar. DiffTwin confirma dónde se guardó el archivo JSON.
+En el panel, abre el menú de opciones **···** de la tarjeta del proyecto y selecciona **Exportar proyecto**. Elige el nombre y la ubicación del archivo en el cuadro de diálogo para guardar. DiffTwin confirma dónde se guardó el archivo JSON.
 
 La exportación contiene la configuración del proyecto y las peticiones, pero **no incluye las credenciales**. Trata los archivos exportados como datos de proyecto sin cifrar.
 
@@ -185,7 +187,7 @@ En el panel, selecciona **Importar proyecto** y elige un archivo JSON de proyect
 
 ### Eliminar
 
-Selecciona **Eliminar** en la tarjeta del proyecto y confirma la eliminación. Se eliminarán permanentemente el proyecto, sus colecciones, sus peticiones y sus credenciales guardadas.
+Abre el menú de opciones **···** de la tarjeta del proyecto, selecciona **Eliminar** y confirma la eliminación. Se eliminarán permanentemente el proyecto, sus colecciones, sus peticiones y sus credenciales guardadas.
 
 ## 9. Probar el ejemplo
 

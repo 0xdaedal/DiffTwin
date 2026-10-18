@@ -43,6 +43,8 @@ A project holds the API environments, authentication settings, comparison option
 
 *The dashboard is where you create, open, import, export, and delete projects.*
 
+Open a project by selecting its name. With a single project, the dashboard also shows a three-step guide to configuring destinations, preparing requests, and comparing responses.
+
 1. On the dashboard, select **New project**.
 2. Enter a project name.
 3. Enter the base URL for the **Stable primary** environment and the **Candidate** environment. For example:
@@ -171,7 +173,7 @@ DiffTwin preserves supported folders, methods, paths and query parameters, heade
 
 ### Export
 
-On the dashboard, select **Export project** on a project card. Choose the file name and location in the save dialog. DiffTwin confirms where the JSON file was saved.
+On the dashboard, open the **···** options menu on a project card and select **Export project**. Choose the file name and location in the save dialog. DiffTwin confirms where the JSON file was saved.
 
 The export contains project configuration and requests, but **does not contain credentials**. Treat exported files as unencrypted project data.
 
@@ -185,7 +187,7 @@ On the dashboard, select **Import project** and choose a DiffTwin project JSON f
 
 ### Delete
 
-Select **Delete** on a project card and confirm the deletion. This permanently removes the project, its collections and requests, and its saved credentials.
+Open the **···** options menu on a project card, select **Delete**, and confirm the deletion. This permanently removes the project, its collections and requests, and its saved credentials.
 
 ## 9. Try the example
 

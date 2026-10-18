@@ -1216,56 +1216,93 @@ onMounted(async () => {
       <div class="dashboard-heading">
         <div>
           <div class="eyebrow">{{ t("TU ESPACIO DE TRABAJO") }}</div>
-          <h1>{{ t("Tus proyectos") }}</h1>
+          <h1>{{ t("Compara cambios. Encuentra diferencias.") }}</h1>
           <p>{{ t("Organiza tus APIs y compara cambios entre entornos.") }}</p>
-          <p class="demo-caption">{{ t("El ejemplo usa un servicio público de eco y requiere conexión a internet.") }}</p>
+          <p v-if="projects.length" class="demo-caption">{{ t("El ejemplo usa un servicio público de eco y requiere conexión a internet.") }}</p>
         </div>
-        <div class="dashboard-actions">
-          <button class="button secondary" @click="createDemoProject">▷ {{ t("Probar ejemplo") }}</button>
+        <div v-if="projects.length" class="dashboard-actions">
+          <button class="button primary" @click="newProject">＋ {{ t("Nuevo proyecto") }}</button>
           <button class="button secondary project-action-button" @click="projectFileInput.click()">
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3m0 0L6.5 6.5M10 3l3.5 3.5M4 11v5h12v-5"/></svg>
             {{ t("Importar proyecto") }}
           </button>
-          <button class="button primary" @click="newProject">＋ {{ t("Nuevo proyecto") }}</button>
-          <input ref="projectFileInput" type="file" accept=".json,application/json" hidden @change="importProject">
+          <button class="button quiet" @click="createDemoProject">▷ {{ t("Probar ejemplo") }}</button>
         </div>
+        <input ref="projectFileInput" type="file" accept=".json,application/json" hidden @change="importProject">
       </div>
-      <div v-if="projects.length" class="project-grid">
+      <section v-if="projects.length" class="dashboard-projects" aria-labelledby="dashboard-projects-title">
+        <div class="dashboard-section-heading">
+          <h2 id="dashboard-projects-title">{{ t("Tus proyectos") }}</h2>
+          <p>{{ t("Abre un proyecto para continuar comparando tus APIs.") }}</p>
+        </div>
+      <div class="project-grid">
         <article v-for="item in projects" :key="item.id" class="project-card">
-          <button class="project-card-open" @click="openProject(item.id)">
-            <div class="project-card-top">
+          <div class="project-card-top">
+            <button class="project-card-open" :aria-label="t('Abrir proyecto {name}', { name: item.name })" @click="openProject(item.id)">
               <span class="project-logo">{{ item.name.slice(0, 1).toUpperCase() }}</span>
+              <span class="project-card-heading">
+                <strong>{{ item.name }}</strong>
+                <span class="card-meta">{{ projectSummary(item) }}</span>
+              </span>
               <span class="card-arrow">↗</span>
-            </div>
-            <strong>{{ item.name }}</strong>
-            <span class="card-meta">{{ projectSummary(item) }}</span>
-            <div class="target-summary">
-              <span><i class="target-dot stable"></i>{{ item.primary }}</span>
-              <span><i class="target-dot candidate"></i>{{ item.candidate }}</span>
-              <span v-if="item.secondary"><i class="target-dot stable"></i>{{ item.secondary }}</span>
-            </div>
-          </button>
-          <div class="project-card-actions">
-            <button class="button quiet project-action-button" :aria-label="`${t('Exportar proyecto')} ${item.name}`" @click="exportProject(item)">
-              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 8v9m0 0 3.5-3.5M10 17l-3.5-3.5M4 9V4h12v5"/></svg>
-              {{ t("Exportar proyecto") }}
             </button>
-            <button class="button quiet project-card-delete project-action-button" :aria-label="`${t('Eliminar')} ${t('proyecto')} ${item.name}`" @click="deleteProject(item)">
-              <svg class="project-delete-icon" viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M5 6.25h10l-.7 9.1a1 1 0 0 1-1 .9H6.7a1 1 0 0 1-1-.9L5 6.25Z" />
-                <path d="M3.75 4.75h12.5M8 4.75v-1a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1m-4 3.5v5m3-5v5" />
-              </svg>
-              {{ t("Eliminar") }}
-            </button>
+            <details class="project-actions" @keydown.esc.prevent="$event.currentTarget.open = false; $event.currentTarget.querySelector('summary').focus()">
+              <summary class="icon-button project-actions-trigger" :aria-label="t('Opciones de proyecto {name}', { name: item.name })" :title="t('Opciones de proyecto {name}', { name: item.name })">···</summary>
+              <div class="project-actions-menu">
+                <button type="button" class="project-menu-item" @click="exportProject(item); $event.currentTarget.closest('details').open = false">
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 8v9m0 0 3.5-3.5M10 17l-3.5-3.5M4 9V4h12v5"/></svg>
+                  {{ t("Exportar proyecto") }}
+                </button>
+                <button type="button" class="project-menu-item project-menu-delete" @click="deleteProject(item); $event.currentTarget.closest('details').open = false">
+                  <svg class="project-delete-icon" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M5 6.25h10l-.7 9.1a1 1 0 0 1-1 .9H6.7a1 1 0 0 1-1-.9L5 6.25Z" />
+                    <path d="M3.75 4.75h12.5M8 4.75v-1a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1m-4 3.5v5m3-5v5" />
+                  </svg>
+                  {{ t("Eliminar") }}
+                </button>
+              </div>
+            </details>
+          </div>
+          <div class="target-summary">
+            <div class="target-row">
+              <i class="target-dot stable"></i><span class="target-label">{{ t("Estable principal") }}</span><code :title="item.primary">{{ item.primary }}</code>
+            </div>
+            <div class="target-row">
+              <i class="target-dot candidate"></i><span class="target-label">{{ t("Candidata") }}</span><code :title="item.candidate">{{ item.candidate }}</code>
+            </div>
+            <div v-if="item.secondary" class="target-row">
+              <i class="target-dot stable"></i><span class="target-label">{{ t("Estable secundaria") }}</span><code :title="item.secondary">{{ item.secondary }}</code>
+            </div>
           </div>
         </article>
       </div>
+      </section>
       <div v-else class="empty-state">
         <span class="empty-icon">◇</span>
         <h2>{{ t("Empieza creando un proyecto") }}</h2>
-        <p>{{ t("Configura tus destinos y guarda tus primeras peticiones de API.") }}</p>
-        <button class="button primary" @click="newProject">＋ {{ t("Crear proyecto") }}</button>
+        <p>{{ t("Crea tu primer proyecto o importa uno existente para empezar.") }}</p>
+        <div class="empty-state-actions">
+          <button class="button primary" @click="newProject">＋ {{ t("Crear proyecto") }}</button>
+          <button class="button secondary project-action-button" @click="projectFileInput.click()">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3m0 0L6.5 6.5M10 3l3.5 3.5M4 11v5h12v-5"/></svg>
+            {{ t("Importar proyecto") }}
+          </button>
+          <button class="button quiet" @click="createDemoProject">▷ {{ t("Probar ejemplo") }}</button>
+        </div>
+        <p class="empty-state-note">{{ t("El ejemplo usa un servicio público de eco y requiere conexión a internet.") }}</p>
       </div>
+      <section v-if="projects.length === 1" class="dashboard-guide" aria-labelledby="dashboard-guide-title">
+        <div class="dashboard-guide-intro">
+          <span class="eyebrow">{{ t("DE LA PETICIÓN AL RESULTADO") }}</span>
+          <h2 id="dashboard-guide-title">{{ t("Tu próxima comparación, en tres pasos") }}</h2>
+          <p>{{ t("Abre tu proyecto y sigue este recorrido.") }}</p>
+        </div>
+        <ol class="dashboard-steps">
+          <li><span class="dashboard-step-number">1</span><div><h3>{{ t("Configura los destinos") }}</h3><p>{{ t("Define la estable principal y la candidata. Añade otra estable para detectar ruido.") }}</p></div></li>
+          <li><span class="dashboard-step-number">2</span><div><h3>{{ t("Prepara una petición") }}</h3><p>{{ t("Elige una petición de tu colección o crea una con su ruta, parámetros y cabeceras.") }}</p></div></li>
+          <li><span class="dashboard-step-number">3</span><div><h3>{{ t("Envía y compara") }}</h3><p>{{ t("Revisa el estado HTTP, los valores que cambian y las respuestas de cada destino.") }}</p></div></li>
+        </ol>
+      </section>
     </main>
 
     <div v-else class="workspace" :class="{ 'sidebar-resizing': sidebarResizing }" :style="{ '--sidebar-width': `${sidebarWidth}px` }">
