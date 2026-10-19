@@ -1454,7 +1454,8 @@ onMounted(async () => {
               v-for="(item, index) in visibleCollectionRun.items"
               :key="`${item.request.id}-${index}`"
               class="collection-run-item"
-              :class="`collection-run-${item.status}`"
+              :class="[`collection-run-${item.status}`, { selected: requestId === item.request.id }]"
+              :aria-pressed="requestId === item.request.id"
               :disabled="item.status === 'pending' || item.status === 'running'"
               @click="showCollectionRunResult(item)"
             >

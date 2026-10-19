@@ -242,8 +242,11 @@ test("ejecuta una petición y muestra el resultado de comparación", async ({ pa
   await page.locator(".project-card-open").click();
   await page.getByRole("button", { name: "Expandir colección" }).click();
   await page.getByRole("button", { name: /Listar usuarios/ }).click();
+  const selectedRequest = page.locator(".request-row.selected");
+  await expect(selectedRequest).toContainText("Listar usuarios");
   await page.getByRole("button", { name: /Enviar/ }).click();
 
+  await expect(selectedRequest).toBeVisible();
   await expect(page.getByText("Hay diferencias", { exact: true })).toBeVisible();
   await expect(page.getByText("RESULTADO DE LA COMPARACIÓN")).toBeVisible();
   await expect(page.locator(".latency-comparison")).toContainText("Estable principal:");
@@ -254,6 +257,31 @@ test("ejecuta una petición y muestra el resultado de comparación", async ({ pa
       call.method === "RunRequest" && call.projectId === "project-1" && call.request.path === "/users?page=1"
     )
   )).toBe(true);
+});
+
+test("mantiene marcada la petición seleccionada entre los resultados de una colección", async ({ page }) => {
+  await page.addInitScript(() => {
+    const collection = window.__difftwinTestState.projects[0].collections[0];
+    collection.requests.push(
+      { id: "request-2", name: "Comprobar servicio", method: "GET", path: "/health", headers: {}, body: "" },
+      { id: "request-3", name: "Consultar versión", method: "GET", path: "/version", headers: {}, body: "" }
+    );
+  });
+  await page.goto("/");
+  await page.locator(".project-card-open").click();
+  await page.locator(".collection-row").hover();
+  await page.getByRole("button", { name: "Opciones de colección" }).click();
+  await page.getByRole("button", { name: /Ejecutar colección/ }).click();
+
+  const results = page.locator(".collection-run-item");
+  await expect(results).toHaveCount(3);
+  await expect(results.nth(1)).toBeEnabled();
+  await results.nth(1).click();
+
+  await expect(results.nth(1)).toHaveAttribute("aria-pressed", "true");
+  await expect(results.nth(1)).toHaveClass(/selected/);
+  await expect(page.locator(".request-row.selected")).toContainText("Comprobar servicio");
+  await expect(page.getByText("RESULTADO DE LA COMPARACIÓN")).toBeVisible();
 });
 
 test("navega, pliega y sincroniza respuestas JSON largas", async ({ page }) => {

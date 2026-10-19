@@ -173,7 +173,7 @@ Use a variable with double braces in a request path, query parameter, header, or
 
 ## 6. Run a collection
 
-Open a collection's options menu and select **Run collection**. DiffTwin executes its requests sequentially in the displayed order, shows progress and each request's outcome, and continues if an individual request fails. Select a completed result to open its comparison.
+Open a collection's options menu and select **Run collection**. DiffTwin executes its requests sequentially in the displayed order, shows progress and each request's outcome, and continues if an individual request fails. Select a completed result to open its comparison. The open request remains highlighted in the tree and results list so you can find it when you return.
 
 You can still run an individual request at any time with **Send**.
 

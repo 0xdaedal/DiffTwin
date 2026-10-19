@@ -177,7 +177,7 @@ h1 { margin: 9px 0 6px; font-size: 27px; letter-spacing: -.8px; }
 .collection-group, .folder-branch, .request-branch { position: relative; margin-bottom: 2px; }
 .tree-row { width: 100%; min-height: 29px; display: flex; align-items: center; gap: 5px; padding: 2px 5px; border: 0; border-radius: 5px; color: var(--muted); background: transparent; text-align: left; cursor: pointer; }
 .tree-row:hover { background: var(--surface-hover); color: var(--text); }
-.tree-row.selected { background: #718df022; color: var(--text); }
+.tree-row.selected { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); box-shadow: inset 1px 0 color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text); }
 .tree-row[draggable="true"] { cursor: grab; }
 .tree-row[draggable="true"]:active { cursor: grabbing; }
 .tree-row.drop-target { outline: 1px dashed var(--accent); outline-offset: -1px; background: #718df022; color: var(--text); }
@@ -222,6 +222,7 @@ h1 { margin: 9px 0 6px; font-size: 27px; letter-spacing: -.8px; }
 .collection-run-item { width: 100%; min-height: 28px; display: flex; align-items: center; gap: 10px; padding: 4px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--text); text-align: left; font-size: 10px; }
 .collection-run-item:not(:disabled) { cursor: pointer; }
 .collection-run-item:not(:disabled):hover { background: var(--surface-hover); }
+.collection-run-item.selected { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); box-shadow: inset 1px 0 color-mix(in srgb, var(--accent) 55%, transparent); }
 .collection-run-item:disabled { opacity: .75; }
 .collection-run-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .collection-run-status { flex: 0 0 auto; color: var(--muted); }

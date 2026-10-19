@@ -173,7 +173,7 @@ Usa una variable entre llaves dobles en la ruta, los parámetros de consulta, la
 
 ## 6. Ejecutar una colección
 
-Abre el menú de opciones de una colección y selecciona **Ejecutar colección**. DiffTwin ejecuta las peticiones secuencialmente en el orden mostrado, indica el progreso y el resultado de cada petición, y continúa aunque una de ellas falle. Selecciona un resultado completado para abrir su comparación.
+Abre el menú de opciones de una colección y selecciona **Ejecutar colección**. DiffTwin ejecuta las peticiones secuencialmente en el orden mostrado, indica el progreso y el resultado de cada petición, y continúa aunque una de ellas falle. Selecciona un resultado completado para abrir su comparación. La petición abierta queda resaltada en el árbol y en la lista de resultados para que puedas localizarla al volver.
 
 También puedes ejecutar una petición individual en cualquier momento con **Enviar**.
 
