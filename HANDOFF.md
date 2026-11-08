@@ -20,11 +20,17 @@ The **Probar ejemplo** dashboard action idempotently creates or opens the `Demo:
 - `frontend/src`: Vue interface and styles; `frontend/dist` contains assets embedded in the app.
 - `main.go`: Wails startup and legacy HTTP handlers retained for compatibility/tests.
 
-## Next improvement
+## Near-term focus
 
-**Comparison history:** browse previous runs and inspect their responses and differences. Define its UX and persistence before implementation; keep credentials out of any stored run data.
+**Usability:** review the main user workflows and prioritize improvements that make common tasks easier to discover, understand, and complete.
 
-**Future release automation:** derive the next semantic version and changelog from Conventional Commits, then create the version tag that triggers the release workflow. Choose and document the release policy/tool before implementing this.
+## Future improvements (parked)
+
+- **Comparison history:** browse previous runs and inspect their responses and differences. Define its UX and persistence before implementation; keep credentials out of any stored run data.
+- **Postman import coverage:** consider common unsupported request body formats and clearer reporting for unsupported collection items. Never execute imported scripts or persist imported secrets in project JSON.
+- **Release trust:** provide checksums and verification guidance for release artifacts; consider signing and notarization when practical.
+- **Collection execution controls:** consider cancellation, retrying failed requests, and exporting a run summary.
+- **Release automation:** derive the next semantic version and changelog from Conventional Commits, then create the version tag that triggers the release workflow. Choose and document the release policy/tool before implementing this.
 
 ## Development workflow
 

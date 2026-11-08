@@ -116,6 +116,12 @@ const project = computed(() => projects.value.find((item) => item.id === project
 const collection = computed(() => project.value?.collections?.find((item) => item.id === collectionId.value) || null);
 const selectedFolder = computed(() => findFolder(collection.value?.folders || [], folderId.value));
 const selectedRequest = computed(() => findRequest(collection.value, requestId.value));
+const savedRequestSnapshot = ref(null);
+const hasUnsavedRequestChanges = computed(() => {
+  const request = selectedRequest.value;
+  return Boolean(request && savedRequestSnapshot.value?.id === request.id &&
+    JSON.stringify(request) !== savedRequestSnapshot.value.value);
+});
 const {
   authTarget,
   authForm,
@@ -579,6 +585,44 @@ function closeAppDialog(result = null) {
   resolve?.(result);
 }
 
+function recordRequestSnapshot(request = selectedRequest.value) {
+  savedRequestSnapshot.value = request
+    ? { id: request.id, value: JSON.stringify(request) }
+    : null;
+}
+
+function discardRequestChanges() {
+  const request = selectedRequest.value;
+  if (!request || savedRequestSnapshot.value?.id !== request.id) return;
+  const saved = JSON.parse(savedRequestSnapshot.value.value);
+  for (const key of Object.keys(request)) {
+    if (!(key in saved)) delete request[key];
+  }
+  Object.assign(request, saved);
+}
+
+async function resolveUnsavedRequestChanges() {
+  if (!hasUnsavedRequestChanges.value) return true;
+  const choice = await showAppDialog({
+    type: "unsaved-request",
+    title: t("Hay cambios sin guardar"),
+    message: t("Guarda o descarta los cambios de esta petición antes de continuar.")
+  });
+  if (choice === "discard") {
+    discardRequestChanges();
+    return true;
+  }
+  if (choice !== "save") return false;
+  try {
+    await persistCollection();
+    flash(t("Petición guardada."));
+    return true;
+  } catch (error) {
+    flash(error.message || String(error), true);
+    return false;
+  }
+}
+
 function confirmAction(message) {
   return showAppDialog({ type: "confirm", title: t("Confirmar acción"), message });
 }
@@ -592,12 +636,26 @@ function showImportWarnings(message) {
 }
 
 async function refreshProjects() {
+  const requestDraft = hasUnsavedRequestChanges.value
+    ? JSON.parse(JSON.stringify(selectedRequest.value))
+    : null;
   projects.value = await backend().GetProjects();
   if (projectId.value && !projects.value.some((item) => item.id === projectId.value)) {
     projectId.value = "";
     collectionId.value = "";
     folderId.value = "";
     requestId.value = "";
+    recordRequestSnapshot(null);
+    return;
+  }
+  if (requestDraft) {
+    const refreshedRequest = findRequest(collection.value, requestId.value);
+    if (refreshedRequest) {
+      for (const key of Object.keys(refreshedRequest)) {
+        if (!(key in requestDraft)) delete refreshedRequest[key];
+      }
+      Object.assign(refreshedRequest, requestDraft);
+    }
   }
 }
 
@@ -643,54 +701,70 @@ function setLocale(value) {
   document.documentElement.lang = locale.value;
 }
 
-function openProject(id) {
+async function openProject(id) {
+  if (!(await resolveUnsavedRequestChanges())) return false;
   projectId.value = id;
   collectionId.value = "";
   folderId.value = "";
   requestId.value = "";
+  recordRequestSnapshot(null);
   response.value = null;
   ignoredJSONPathsText.value = (projects.value.find((item) => item.id === id)?.ignored_json_paths || []).join("\n");
   latencyThresholds.value = latencyThresholdsFrom(projects.value.find((item) => item.id === id));
   authTarget.value = "primary";
   closeMenus();
   loadProjectAuth(id);
+  return true;
 }
 
-function goHome() {
+async function goHome() {
+  if (!(await resolveUnsavedRequestChanges())) return false;
   projectId.value = "";
   collectionId.value = "";
   folderId.value = "";
   requestId.value = "";
+  recordRequestSnapshot(null);
   response.value = null;
   closeMenus();
+  return true;
 }
 
-function selectCollection(item) {
+async function selectCollection(item) {
+  if (!(await resolveUnsavedRequestChanges())) return false;
   collectionId.value = item.id;
   folderId.value = "";
   requestId.value = "";
+  recordRequestSnapshot(null);
   response.value = null;
   expandedCollections.value.add(item.id);
   closeMenus();
+  return true;
 }
 
-function toggleCollection(item) {
+async function toggleCollection(item) {
   if (expandedCollections.value.has(item.id)) {
     expandedCollections.value.delete(item.id);
     return;
   }
-  selectCollection(item);
+  await selectCollection(item);
 }
 
-function selectFolder(targetCollectionID, id) {
+async function selectFolder(targetCollectionID, id) {
+  if (!(await resolveUnsavedRequestChanges())) return false;
   collectionId.value = targetCollectionID;
   folderId.value = id;
   requestId.value = "";
+  recordRequestSnapshot(null);
   response.value = null;
   expandedCollections.value.add(targetCollectionID);
+  return true;
 }
 
-function selectRequest(targetCollectionID, id, parentFolderId = "") {
+async function selectRequest(targetCollectionID, id, parentFolderId = "") {
+  if (!(await resolveUnsavedRequestChanges())) return false;
+  const targetCollection = project.value?.collections?.find((item) => item.id === targetCollectionID);
+  const targetRequest = findRequest(targetCollection, id);
+  if (!targetRequest) return false;
   collectionId.value = targetCollectionID;
   requestId.value = id;
   folderId.value = parentFolderId;
@@ -698,6 +772,8 @@ function selectRequest(targetCollectionID, id, parentFolderId = "") {
   expandedCollections.value.add(targetCollectionID);
   closeMenus();
   requestEditorResetKey.value += 1;
+  recordRequestSnapshot(targetRequest);
+  return true;
 }
 
 function newProject() {
@@ -744,12 +820,13 @@ async function saveProject() {
 }
 
 async function deleteProject(item = project.value) {
+  if (item?.id === projectId.value && !(await resolveUnsavedRequestChanges())) return;
   if (!item || !(await confirmAction(t("¿Eliminar el proyecto «{name}»?\n\nSe eliminarán también sus colecciones, peticiones y credenciales guardadas. Esta acción no se puede deshacer.", { name: item.name })))) return;
   try {
     await backend().DeleteProject(item.id);
     if (projectId.value === item.id) {
       projectDialog.value = false;
-      goHome();
+      await goHome();
     }
     await refreshProjects();
     flash(t("Proyecto «{name}» eliminado.", { name: item.name }));
@@ -763,9 +840,11 @@ async function persistCollection() {
   const saved = await backend().SaveCollection(project.value.id, collection.value);
   collectionId.value = saved.id;
   await refreshProjects();
+  recordRequestSnapshot();
 }
 
 async function createCollection() {
+  if (!(await resolveUnsavedRequestChanges())) return;
   const name = await promptForName(t("Nombre de la colección"));
   if (!name?.trim()) return;
   try {
@@ -773,7 +852,7 @@ async function createCollection() {
       id: "", name: name.trim(), requests: [], folders: []
     });
     await refreshProjects();
-    selectCollection(saved);
+    await selectCollection(saved);
     flash(t("Colección creada."));
   } catch (error) {
     flash(error.message || String(error), true);
@@ -799,12 +878,14 @@ async function saveCollectionRename(item, name) {
 }
 
 async function deleteCollection() {
+  if (!(await resolveUnsavedRequestChanges())) return;
   if (!(await confirmAction(t("¿Eliminar «{name}» y todo su contenido?", { name: collection.value.name })))) return;
   try {
     await backend().DeleteCollection(project.value.id, collection.value.id);
     collectionId.value = "";
     folderId.value = "";
     requestId.value = "";
+    recordRequestSnapshot(null);
     await refreshProjects();
     flash(t("Colección eliminada."));
   } catch (error) {
@@ -813,6 +894,7 @@ async function deleteCollection() {
 }
 
 async function createFolder(parentId = "") {
+  if (!(await resolveUnsavedRequestChanges())) return;
   if (!collection.value) {
     flash(t("Selecciona una colección antes de crear una carpeta."), true);
     return;
@@ -894,6 +976,7 @@ async function renameFolder(collectionID, id, rawName) {
 }
 
 async function deleteFolder(id) {
+  if (!(await resolveUnsavedRequestChanges())) return;
   const target = findFolder(collection.value.folders || [], id);
   if (!target || !(await confirmAction(t("¿Eliminar «{name}» y todo su contenido?", { name: target.name })))) return;
   updateFolder(collection.value.folders, id, (siblings, index) => siblings.splice(index, 1));
@@ -906,6 +989,7 @@ async function deleteFolder(id) {
 }
 
 async function createRequest(parentId = "") {
+  if (!(await resolveUnsavedRequestChanges())) return;
   if (!collection.value) {
     flash(t("Selecciona una colección antes de crear una petición."), true);
     return;
@@ -928,6 +1012,7 @@ async function createRequest(parentId = "") {
   siblings.push(request);
   folderId.value = parentId;
   requestId.value = request.id;
+  recordRequestSnapshot(request);
   response.value = null;
   closeMenus();
   try {
@@ -942,6 +1027,7 @@ async function createRequest(parentId = "") {
 }
 
 async function duplicateRequest(request, parentId = "") {
+  if (!(await resolveUnsavedRequestChanges())) return;
   const duplicate = {
     ...JSON.parse(JSON.stringify(request)),
     id: crypto.randomUUID().replaceAll("-", ""),
@@ -959,6 +1045,7 @@ async function duplicateRequest(request, parentId = "") {
   }
   folderId.value = parentId;
   requestId.value = duplicate.id;
+  recordRequestSnapshot(duplicate);
   response.value = null;
   closeMenus();
   try {
@@ -984,6 +1071,7 @@ async function deleteRequestByID(id, parentId = "") {
   }
   if (requestId.value === id) {
     requestId.value = "";
+    recordRequestSnapshot(null);
     response.value = null;
   }
   closeMenus();
@@ -1084,22 +1172,21 @@ async function runCollection() {
 }
 
 async function runCollectionFromMenu(item) {
-  selectCollection(item);
+  if (!(await selectCollection(item))) return;
   await nextTick();
   await runCollection();
 }
 
-function showCollectionRunResult(item) {
+async function showCollectionRunResult(item) {
   const run = collectionRun.value;
   if (!run) return;
-  if (projectId.value !== run.projectId) openProject(run.projectId);
+  if (projectId.value !== run.projectId && !(await openProject(run.projectId))) return;
   const runCollection = project.value?.collections.find((entry) => entry.id === run.collectionId);
   if (!runCollection || !findRequest(runCollection, item.request.id)) {
     flash(t("La petición de este resultado ya no está en el proyecto."), true);
     return;
   }
-  selectCollection(runCollection);
-  selectRequest(run.collectionId, item.request.id, item.folderId);
+  await selectRequest(run.collectionId, item.request.id, item.folderId);
   response.value = item.result;
 }
 
@@ -1148,7 +1235,7 @@ async function completeProjectImport(raw, conflictAction = "") {
     ? await backend().ImportProjectConfigWithAction(raw, conflictAction)
     : await backend().ImportProjectConfig(raw);
   await refreshProjects();
-  openProject(imported.id);
+  await openProject(imported.id);
   if (conflictAction === "replace") {
     flash(t("Proyecto «{name}» reemplazado. Vuelve a configurar la autenticación; las credenciales no se incluyen en la importación.", { name: imported.name }));
   } else if (conflictAction === "copy") {
@@ -1183,12 +1270,12 @@ async function createDemoProject() {
   try {
     const sample = await backend().CreateDemoProject();
     await refreshProjects();
-    openProject(sample.id);
+    if (!(await openProject(sample.id))) return;
     const sampleCollection = sample.collections?.[0];
     if (sampleCollection) {
-      selectCollection(sampleCollection);
+      await selectCollection(sampleCollection);
       const sampleRequest = sampleCollection.requests?.[0];
-      if (sampleRequest) selectRequest(sampleCollection.id, sampleRequest.id);
+      if (sampleRequest) await selectRequest(sampleCollection.id, sampleRequest.id);
     }
     flash(t("Proyecto de ejemplo listo. Pulsa Enviar para ver las diferencias."));
   } catch (error) {
@@ -1202,7 +1289,7 @@ async function importPostman(event) {
     if (!raw) return;
     const imported = await backend().ImportPostmanCollection(project.value.id, raw);
     await refreshProjects();
-    selectCollection(imported.collection);
+    await selectCollection(imported.collection);
     if (imported.warnings?.length) {
       await showImportWarnings(t("Colección importada con estas limitaciones:\n\n• {warnings}", { warnings: imported.warnings.join("\n• ") }));
     }
@@ -1239,7 +1326,7 @@ onMounted(async () => {
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m2.8 9 7.2-6 7.2 6v8H12v-5H8v5H2.8V9Z"/></svg>
       </button>
       <div v-if="project" class="project-switch">
-        <select v-model="projectId" :aria-label="t('Proyecto')" @change="openProject(projectId)">
+        <select :value="projectId" :aria-label="t('Proyecto')" @change="openProject($event.target.value)">
           <option v-for="item in projects" :key="item.id" :value="item.id">{{ item.name }}</option>
         </select>
         <span class="chevron" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m4.5 6 3.5 3.5L11.5 6" /></svg></span>
@@ -1494,6 +1581,7 @@ onMounted(async () => {
             :request="selectedRequest"
             :locale="locale"
             :busy="busy"
+            :dirty="hasUnsavedRequestChanges"
             :reset-key="requestEditorResetKey"
             @save="saveRequest"
             @run="runRequest"
@@ -1620,7 +1708,7 @@ onMounted(async () => {
         @keydown.esc.stop.prevent="closeAppDialog()"
       >
         <div class="modal-heading">
-          <div><div class="eyebrow">{{ t(appDialog.type === "confirm" ? "CONFIRMAR ACCIÓN" : appDialog.type === "prompt" ? "NUEVO ELEMENTO" : "IMPORTACIÓN") }}</div><h2 id="app-dialog-title">{{ appDialog.title }}</h2></div>
+          <div><div class="eyebrow">{{ t(appDialog.type === "confirm" ? "CONFIRMAR ACCIÓN" : appDialog.type === "prompt" ? "NUEVO ELEMENTO" : appDialog.type === "unsaved-request" ? "CAMBIOS PENDIENTES" : "IMPORTACIÓN") }}</div><h2 id="app-dialog-title">{{ appDialog.title }}</h2></div>
           <button type="button" class="icon-button" :aria-label="t('Cerrar')" @click="closeAppDialog()">×</button>
         </div>
         <p v-if="appDialog.message" class="app-dialog-message">{{ appDialog.message }}</p>
@@ -1633,8 +1721,11 @@ onMounted(async () => {
           @keydown.enter.prevent="closeAppDialog(appDialog.value)"
         >
         <div class="modal-actions">
-          <button v-if="appDialog.type !== 'message'" type="button" class="button secondary" @click="closeAppDialog()">{{ t("Cancelar") }}</button>
-          <button
+          <button v-if="appDialog.type === 'unsaved-request'" type="button" class="button secondary" @click="closeAppDialog()">{{ t("Seguir editando") }}</button>
+          <button v-if="appDialog.type === 'unsaved-request'" type="button" class="button danger-outline" @click="closeAppDialog('discard')">{{ t("Descartar cambios") }}</button>
+          <button v-if="appDialog.type === 'unsaved-request'" type="button" class="button primary" @click="closeAppDialog('save')">{{ t("Guardar cambios") }}</button>
+          <button v-else-if="appDialog.type !== 'message'" type="button" class="button secondary" @click="closeAppDialog()">{{ t("Cancelar") }}</button>
+          <button v-if="appDialog.type !== 'unsaved-request'"
             type="button"
             class="button"
             :class="appDialog.type === 'confirm' ? 'danger-outline' : 'primary'"

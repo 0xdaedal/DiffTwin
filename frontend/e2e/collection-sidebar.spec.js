@@ -190,6 +190,73 @@ test("guarda la edición de parámetros desde el editor de peticiones", async ({
   )).toBe(true);
 });
 
+test("protege los cambios de una petición al navegar a otra", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__difftwinTestState.projects[0].collections[0].requests.push({
+      id: "request-2",
+      name: "Comprobar servicio",
+      method: "GET",
+      path: "/health",
+      headers: {},
+      body: ""
+    });
+  });
+  await page.goto("/");
+  await page.locator(".project-card-open").click();
+  await page.getByRole("button", { name: "Expandir colección" }).click();
+  await page.getByRole("button", { name: /Listar usuarios/ }).click();
+
+  const pathInput = page.locator(".url-input");
+  const unsavedStatus = page.locator(".request-dirty");
+  await pathInput.fill("/users?page=2");
+  await expect(unsavedStatus).toBeVisible();
+  await page.getByRole("button", { name: /Comprobar servicio/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("Hay cambios sin guardar");
+  await page.getByRole("button", { name: "Seguir editando" }).click();
+  await expect(pathInput).toHaveValue("/users?page=2");
+
+  await page.getByRole("button", { name: /Comprobar servicio/ }).click();
+  await page.getByRole("button", { name: "Descartar cambios" }).click();
+  await page.getByRole("button", { name: /Listar usuarios/ }).click();
+  await expect(pathInput).toHaveValue("/users?page=1");
+
+  await pathInput.fill("/users?page=3");
+  await page.getByRole("button", { name: /Comprobar servicio/ }).click();
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.getByRole("textbox", { name: "Nombre de petición" })).toHaveValue("Comprobar servicio");
+  await expect.poll(() => page.evaluate(() =>
+    window.__difftwinTestState.calls.some((call) =>
+      call.method === "SaveCollection" && call.collection.requests[0].path === "/users?page=3"
+    )
+  )).toBe(true);
+});
+
+test("protege los cambios sin guardar al cambiar de proyecto", async ({ page }) => {
+  await page.addInitScript(() => {
+    const secondProject = structuredClone(window.__difftwinTestState.projects[0]);
+    secondProject.id = "project-2";
+    secondProject.name = "Otro proyecto";
+    window.__difftwinTestState.projects.push(secondProject);
+  });
+  await page.goto("/");
+  await page.locator(".project-card-open").first().click();
+  await page.getByRole("button", { name: "Expandir colección" }).click();
+  await page.getByRole("button", { name: /Listar usuarios/ }).click();
+  await page.locator(".url-input").fill("/users?page=2");
+
+  const projectPicker = page.getByRole("combobox", { name: "Proyecto" });
+  await projectPicker.selectOption("project-2");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "Seguir editando" }).click();
+  await expect(projectPicker).toHaveValue("project-1");
+  await expect(page.getByRole("textbox", { name: "Nombre de petición" })).toHaveValue("Listar usuarios");
+
+  await projectPicker.selectOption("project-2");
+  await page.getByRole("button", { name: "Descartar cambios" }).click();
+  await expect(projectPicker).toHaveValue("project-2");
+  await expect(page.locator(".breadcrumbs")).toContainText("Otro proyecto");
+});
+
 test("renombra una colección desde su menú contextual", async ({ page }) => {
   await page.goto("/");
   await page.locator(".project-card-open").click();

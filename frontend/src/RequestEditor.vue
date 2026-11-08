@@ -6,6 +6,7 @@ const props = defineProps({
   request: { type: Object, required: true },
   locale: { type: String, required: true },
   busy: { type: Boolean, default: false },
+  dirty: { type: Boolean, default: false },
   resetKey: { type: Number, default: 0 }
 });
 
@@ -121,6 +122,7 @@ watch(() => props.resetKey, () => {
     <button class="editor-tab" :class="{ active: activeTab === 'params' }" @click="activeTab = 'params'">Params <span class="tab-count">{{ queryParamCount }}</span></button>
     <button class="editor-tab" :class="{ active: activeTab === 'headers' }" @click="activeTab = 'headers'">Headers <span class="tab-count">{{ headerCount }}</span></button>
     <button class="editor-tab" :class="{ active: activeTab === 'body' }" @click="activeTab = 'body'">Body</button>
+    <span v-if="dirty" class="request-dirty" role="status" aria-live="polite">{{ t("Sin guardar") }}</span>
     <span class="tab-spacer"></span>
     <button class="button secondary small" @click="emit('save')">{{ t("Guardar") }}</button>
   </div>

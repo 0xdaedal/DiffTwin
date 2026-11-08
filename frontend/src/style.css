@@ -246,6 +246,7 @@ h1 { margin: 9px 0 6px; font-size: 27px; letter-spacing: -.8px; }
 .workspace-auth-summary::-webkit-details-marker { display: none; }
 .workspace-auth-summary strong { color: var(--text); font-size: 11px; }
 .auth-unsaved-badge { margin-left: auto; color: var(--amber); font-size: 9px; font-weight: 600; }
+.request-dirty { color: var(--amber); font-size: 10px; font-weight: 600; }
 .settings-toggle { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; }
 .workspace-auth[open] .settings-toggle > span { transform: rotate(180deg); }
 .settings-toggle > span { display: inline-block; color: var(--faint); transition: transform .15s ease; }
